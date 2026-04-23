@@ -12,8 +12,7 @@ export const SITE = {
   social: {
     instagram: "https://www.instagram.com/palinstitute/",
     youtube: "https://www.youtube.com/@PALINSTITUTE-DineshPal",
-    facebook: "#",
-    telegram: "#",
+    facebook: "https://www.facebook.com/profile.php?id=61565861137398",
   },
   externalLinks: {
     onlineCourses: "https://palinstitute.akamai.net.in/",

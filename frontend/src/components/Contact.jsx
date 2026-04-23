@@ -58,7 +58,6 @@ export default function Contact() {
               <Social href={SITE.social.instagram} icon={Instagram} label="instagram" />
               <Social href={SITE.social.youtube} icon={Youtube} label="youtube" />
               <Social href={SITE.social.facebook} icon={Facebook} label="facebook" />
-              <Social href={SITE.social.telegram} icon={Send} label="telegram" />
             </div>
           </div>
         </div>
