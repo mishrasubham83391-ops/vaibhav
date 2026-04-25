@@ -63,8 +63,24 @@ function Login({ onSuccess }) {
       localStorage.setItem("pal_admin_token", res.data.token);
       onSuccess(res.data.token);
       toast.success("Welcome back!");
-    } catch {
-      setErr("Invalid password. Please try again.");
+    } catch (ex) {
+      // Distinguish auth failure vs network/CORS/config errors so users
+      // don't think the password is wrong when really the backend is unreachable.
+      const status = ex?.response?.status;
+      if (status === 401) {
+        setErr("Invalid password. Please try again.");
+      } else if (status) {
+        setErr(`Server error (HTTP ${status}). Please try again.`);
+      } else {
+        // Network error, CORS block, or REACT_APP_BACKEND_URL not set on the host.
+        const url = process.env.REACT_APP_BACKEND_URL || "(not set)";
+        // eslint-disable-next-line no-console
+        console.error("[admin login] network error", { backendUrl: url, error: ex });
+        setErr(
+          `Cannot reach backend at ${url}. ` +
+          `Check REACT_APP_BACKEND_URL on the host and that the backend allows this origin (CORS_ORIGINS).`
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -93,7 +109,7 @@ function Login({ onSuccess }) {
           className="w-full border border-gray-300 rounded-md px-3 py-2.5 mb-2 focus:outline-none focus:ring-2 focus:ring-navy/30 focus:border-navy"
           autoFocus
         />
-        {err && <p className="text-xs text-red-600 mb-2">{err}</p>}
+        {err && <p className="text-xs text-red-600 mb-2 leading-relaxed" data-testid="admin-login-error">{err}</p>}
         <button
           data-testid="admin-login-btn"
           type="submit"
@@ -135,8 +151,21 @@ function Dashboard({ onLogout }) {
       setEnquiries(e.data);
       setScholarship(sc.data);
       setToppers(t.data);
-    } catch {
-      toast.error("Failed to load data");
+    } catch (ex) {
+      const status = ex?.response?.status;
+      if (status === 401) {
+        // Token rejected → kick back to login.
+        localStorage.removeItem("pal_admin_token");
+        toast.error("Session expired. Please log in again.");
+        window.location.reload();
+      } else if (status) {
+        toast.error(`Failed to load data (HTTP ${status})`);
+      } else {
+        const url = process.env.REACT_APP_BACKEND_URL || "(not set)";
+        // eslint-disable-next-line no-console
+        console.error("[admin] network error", { backendUrl: url, error: ex });
+        toast.error(`Cannot reach backend (${url}). Check REACT_APP_BACKEND_URL & CORS.`);
+      }
     } finally {
       setLoading(false);
     }
