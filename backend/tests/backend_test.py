@@ -43,10 +43,18 @@ def auth_headers(admin_token):
 
 
 # ---------- Health ----------
-def test_health():
+def test_root():
     r = requests.get(f"{API}/", timeout=10)
     assert r.status_code == 200
     assert r.json().get("status") == "ok"
+
+
+def test_health():
+    r = requests.get(f"{API}/health", timeout=10)
+    assert r.status_code == 200
+    body = r.json()
+    assert body.get("status") == "ok"
+    assert body.get("db") == "connected"
 
 
 # ---------- Public Forms - Consent validation ----------
@@ -131,6 +139,20 @@ def test_admin_login_wrong_password():
 
 def test_admin_login_correct(admin_token):
     assert admin_token
+    # JWT: 3 base64 segments separated by '.'
+    parts = admin_token.split(".")
+    assert len(parts) == 3, f"Expected 3-segment JWT, got: {admin_token!r}"
+    for seg in parts:
+        assert len(seg) > 0
+
+
+def test_admin_verify_invalid_token():
+    r = requests.get(
+        f"{API}/admin/verify",
+        headers={"Authorization": "Bearer not-a-real-token"},
+        timeout=10,
+    )
+    assert r.status_code == 401
 
 
 def test_admin_verify_with_token(auth_headers):

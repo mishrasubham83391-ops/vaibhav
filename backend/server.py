@@ -1,47 +1,74 @@
+"""
+PAL Institute API — FastAPI app.
+
+Runs as ASGI under uvicorn (local dev / Emergent supervisor) and as WSGI
+under PythonAnywhere via wsgi.py (uses a2wsgi adapter).
+
+Routes are sync (def, not async def) and use pymongo so the same code
+works in both ASGI and WSGI environments without event-loop conflicts.
+"""
 from fastapi import FastAPI, APIRouter, HTTPException, Header, Depends
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import MongoClient
 import os
 import logging
-import secrets
 import io
 import csv
-from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict, EmailStr
-from typing import List, Optional, Literal
+import time
 import uuid
+import jwt
+from pathlib import Path
+from pydantic import BaseModel, ConfigDict
+from typing import Optional, Literal
 from datetime import datetime, timezone
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
-# MongoDB connection
-mongo_url = os.environ["MONGO_URL"]
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ["DB_NAME"]]
+# ---------- MongoDB ----------
+# Prefer MONGO_URI (Atlas / production). Fall back to MONGO_URL (local dev).
+MONGO_URI = os.environ.get("MONGO_URI") or os.environ.get("MONGO_URL")
+if not MONGO_URI:
+    raise RuntimeError("MONGO_URI (or MONGO_URL) must be set in environment.")
 
-# Admin config
+DB_NAME = os.environ.get("DB_NAME", "pal_institute")
+
+mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=10000)
+db = mongo_client[DB_NAME]
+
+# ---------- Admin auth (stateless JWT) ----------
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
+JWT_SECRET = os.environ.get(
+    "JWT_SECRET",
+    "pal-institute-default-secret-change-in-production",
+)
+JWT_ALG = "HS256"
 
-# Simple in-memory admin tokens (sufficient for this use case)
-ADMIN_TOKENS: set[str] = set()
-
+# ---------- App ----------
 app = FastAPI(title="PAL Institute API")
 api_router = APIRouter(prefix="/api")
 
 
-# ---------- Helpers ----------
 def utcnow_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def issue_admin_token() -> str:
+    payload = {"role": "admin", "iat": int(time.time())}
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
 
 
 def require_admin(authorization: Optional[str] = Header(None)) -> bool:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing admin token")
     token = authorization.split(" ", 1)[1].strip()
-    if token not in ADMIN_TOKENS:
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
+        if payload.get("role") != "admin":
+            raise HTTPException(status_code=401, detail="Invalid admin token")
+    except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid admin token")
     return True
 
@@ -113,13 +140,22 @@ class LoginRequest(BaseModel):
 
 # ---------- Health ----------
 @api_router.get("/")
-async def root():
+def root():
     return {"message": "PAL Institute API", "status": "ok"}
+
+
+@api_router.get("/health")
+def health():
+    try:
+        mongo_client.admin.command("ping")
+        return {"status": "ok", "db": "connected"}
+    except Exception as e:
+        return {"status": "degraded", "db": "error", "detail": str(e)}
 
 
 # ---------- Public Form Endpoints ----------
 @api_router.post("/bookings")
-async def create_booking(payload: DemoBookingCreate):
+def create_booking(payload: DemoBookingCreate):
     if not payload.consent:
         raise HTTPException(
             status_code=400,
@@ -129,13 +165,13 @@ async def create_booking(payload: DemoBookingCreate):
     doc["id"] = str(uuid.uuid4())
     doc["status"] = "New"
     doc["created_at"] = utcnow_iso()
-    await db.demo_bookings.insert_one(doc)
+    db.demo_bookings.insert_one(doc)
     doc.pop("_id", None)
     return {"success": True, "id": doc["id"]}
 
 
 @api_router.post("/enquiries")
-async def create_enquiry(payload: EnquiryCreate):
+def create_enquiry(payload: EnquiryCreate):
     if not payload.consent:
         raise HTTPException(
             status_code=400,
@@ -145,13 +181,13 @@ async def create_enquiry(payload: EnquiryCreate):
     doc["id"] = str(uuid.uuid4())
     doc["status"] = "New"
     doc["created_at"] = utcnow_iso()
-    await db.enquiries.insert_one(doc)
+    db.enquiries.insert_one(doc)
     doc.pop("_id", None)
     return {"success": True, "id": doc["id"]}
 
 
 @api_router.post("/scholarship")
-async def create_scholarship(payload: ScholarshipCreate):
+def create_scholarship(payload: ScholarshipCreate):
     if not payload.consent:
         raise HTTPException(
             status_code=400,
@@ -161,115 +197,107 @@ async def create_scholarship(payload: ScholarshipCreate):
     doc["id"] = str(uuid.uuid4())
     doc["status"] = "New"
     doc["created_at"] = utcnow_iso()
-    await db.scholarship_registrations.insert_one(doc)
+    db.scholarship_registrations.insert_one(doc)
     doc.pop("_id", None)
     return {"success": True, "id": doc["id"]}
 
 
 @api_router.post("/contact")
-async def create_contact(payload: ContactCreate):
+def create_contact(payload: ContactCreate):
     doc = payload.model_dump()
     doc["id"] = str(uuid.uuid4())
     doc["created_at"] = utcnow_iso()
-    await db.contact_messages.insert_one(doc)
+    db.contact_messages.insert_one(doc)
     doc.pop("_id", None)
     return {"success": True, "id": doc["id"]}
 
 
 @api_router.get("/toppers")
-async def list_toppers():
-    items = await db.toppers.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
-    return items
+def list_toppers():
+    return list(db.toppers.find({}, {"_id": 0}).sort("created_at", -1).limit(500))
 
 
 # ---------- Admin Auth ----------
 @api_router.post("/admin/login")
-async def admin_login(payload: LoginRequest):
+def admin_login(payload: LoginRequest):
     if payload.password != ADMIN_PASSWORD:
         raise HTTPException(status_code=401, detail="Invalid password")
-    token = secrets.token_urlsafe(32)
-    ADMIN_TOKENS.add(token)
-    return {"token": token}
+    return {"token": issue_admin_token()}
 
 
 @api_router.post("/admin/logout")
-async def admin_logout(_: bool = Depends(require_admin), authorization: Optional[str] = Header(None)):
-    if authorization and authorization.startswith("Bearer "):
-        ADMIN_TOKENS.discard(authorization.split(" ", 1)[1].strip())
+def admin_logout(_: bool = Depends(require_admin)):
+    # Stateless JWT: client just discards the token.
     return {"success": True}
 
 
 @api_router.get("/admin/verify")
-async def admin_verify(_: bool = Depends(require_admin)):
+def admin_verify(_: bool = Depends(require_admin)):
     return {"valid": True}
 
 
 # ---------- Admin Lists ----------
 @api_router.get("/admin/bookings")
-async def admin_list_bookings(_: bool = Depends(require_admin)):
-    items = await db.demo_bookings.find({}, {"_id": 0}).sort("created_at", -1).to_list(2000)
-    return items
+def admin_list_bookings(_: bool = Depends(require_admin)):
+    return list(db.demo_bookings.find({}, {"_id": 0}).sort("created_at", -1).limit(2000))
 
 
 @api_router.patch("/admin/bookings/{item_id}/status")
-async def admin_update_booking_status(item_id: str, payload: StatusUpdate, _: bool = Depends(require_admin)):
-    result = await db.demo_bookings.update_one({"id": item_id}, {"$set": {"status": payload.status}})
+def admin_update_booking_status(item_id: str, payload: StatusUpdate, _: bool = Depends(require_admin)):
+    result = db.demo_bookings.update_one({"id": item_id}, {"$set": {"status": payload.status}})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Not found")
     return {"success": True}
 
 
 @api_router.get("/admin/enquiries")
-async def admin_list_enquiries(_: bool = Depends(require_admin)):
-    items = await db.enquiries.find({}, {"_id": 0}).sort("created_at", -1).to_list(2000)
-    return items
+def admin_list_enquiries(_: bool = Depends(require_admin)):
+    return list(db.enquiries.find({}, {"_id": 0}).sort("created_at", -1).limit(2000))
 
 
 @api_router.patch("/admin/enquiries/{item_id}/status")
-async def admin_update_enquiry_status(item_id: str, payload: StatusUpdate, _: bool = Depends(require_admin)):
-    result = await db.enquiries.update_one({"id": item_id}, {"$set": {"status": payload.status}})
+def admin_update_enquiry_status(item_id: str, payload: StatusUpdate, _: bool = Depends(require_admin)):
+    result = db.enquiries.update_one({"id": item_id}, {"$set": {"status": payload.status}})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Not found")
     return {"success": True}
 
 
 @api_router.get("/admin/scholarship")
-async def admin_list_scholarship(_: bool = Depends(require_admin)):
-    items = await db.scholarship_registrations.find({}, {"_id": 0}).sort("created_at", -1).to_list(2000)
-    return items
+def admin_list_scholarship(_: bool = Depends(require_admin)):
+    return list(db.scholarship_registrations.find({}, {"_id": 0}).sort("created_at", -1).limit(2000))
 
 
 @api_router.get("/admin/contacts")
-async def admin_list_contacts(_: bool = Depends(require_admin)):
-    items = await db.contact_messages.find({}, {"_id": 0}).sort("created_at", -1).to_list(2000)
-    return items
+def admin_list_contacts(_: bool = Depends(require_admin)):
+    return list(db.contact_messages.find({}, {"_id": 0}).sort("created_at", -1).limit(2000))
 
 
 # ---------- Admin Toppers / Results ----------
 @api_router.post("/admin/toppers")
-async def admin_create_topper(payload: TopperCreate, _: bool = Depends(require_admin)):
+def admin_create_topper(payload: TopperCreate, _: bool = Depends(require_admin)):
     doc = payload.model_dump()
     doc["id"] = str(uuid.uuid4())
     doc["created_at"] = utcnow_iso()
-    await db.toppers.insert_one(doc)
+    db.toppers.insert_one(doc)
     doc.pop("_id", None)
     return doc
 
 
 @api_router.delete("/admin/toppers/{item_id}")
-async def admin_delete_topper(item_id: str, _: bool = Depends(require_admin)):
-    result = await db.toppers.delete_one({"id": item_id})
+def admin_delete_topper(item_id: str, _: bool = Depends(require_admin)):
+    result = db.toppers.delete_one({"id": item_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Not found")
     return {"success": True}
 
 
-# ---------- Admin Dashboard Stats ----------
+# ---------- Admin Dashboard ----------
 @api_router.get("/admin/dashboard")
-async def admin_dashboard(_: bool = Depends(require_admin)):
-    bookings = await db.demo_bookings.find({}, {"_id": 0}).to_list(5000)
-    enquiries = await db.enquiries.find({}, {"_id": 0}).to_list(5000)
-    scholarship = await db.scholarship_registrations.find({}, {"_id": 0}).to_list(5000)
+def admin_dashboard(_: bool = Depends(require_admin)):
+    bookings = list(db.demo_bookings.find({}, {"_id": 0}))
+    enquiries = list(db.enquiries.find({}, {"_id": 0}))
+    scholarship = list(db.scholarship_registrations.find({}, {"_id": 0}))
 
     from collections import Counter
 
@@ -312,10 +340,10 @@ async def admin_dashboard(_: bool = Depends(require_admin)):
 
 # ---------- Admin CSV Export ----------
 @api_router.get("/admin/export/csv")
-async def admin_export_csv(_: bool = Depends(require_admin)):
-    bookings = await db.demo_bookings.find({}, {"_id": 0}).to_list(5000)
-    enquiries = await db.enquiries.find({}, {"_id": 0}).to_list(5000)
-    scholarship = await db.scholarship_registrations.find({}, {"_id": 0}).to_list(5000)
+def admin_export_csv(_: bool = Depends(require_admin)):
+    bookings = list(db.demo_bookings.find({}, {"_id": 0}))
+    enquiries = list(db.enquiries.find({}, {"_id": 0}))
+    scholarship = list(db.scholarship_registrations.find({}, {"_id": 0}))
 
     output = io.StringIO()
     writer = csv.writer(output)
@@ -360,10 +388,16 @@ async def admin_export_csv(_: bool = Depends(require_admin)):
 
 app.include_router(api_router)
 
+# ---------- CORS ----------
+# CORS_ORIGINS env: comma-separated list of allowed origins.
+# Use "*" to allow all (fine for this public marketing site).
+_cors = os.environ.get("CORS_ORIGINS", "*").strip()
+allowed_origins = ["*"] if _cors == "*" else [o.strip() for o in _cors.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
+    allow_origins=allowed_origins,
+    allow_credentials=False if allowed_origins == ["*"] else True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -376,5 +410,5 @@ logger = logging.getLogger(__name__)
 
 
 @app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
+def shutdown_db_client():
+    mongo_client.close()
