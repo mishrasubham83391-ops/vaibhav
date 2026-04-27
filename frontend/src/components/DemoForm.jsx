@@ -28,13 +28,13 @@ export default function DemoForm({ preselectProgram, onPreselectConsumed }) {
     if (preselectProgram) {
       setForm((f) => ({ ...f, program: preselectProgram }));
       onPreselectConsumed?.();
-      setTimeout(() => {
+      const id = setTimeout(() => {
         const el = document.getElementById("demo");
         el?.scrollIntoView({ behavior: "smooth" });
       }, 100);
+      return () => clearTimeout(id);
     }
-     
-  }, [preselectProgram]);
+  }, [preselectProgram, onPreselectConsumed]);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 

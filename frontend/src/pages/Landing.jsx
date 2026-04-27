@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import AnnouncementBar from "@/components/AnnouncementBar";
 import CountdownTimer from "@/components/CountdownTimer";
 import Header from "@/components/Header";
@@ -18,9 +18,14 @@ import SocialProofToast from "@/components/SocialProofToast";
 export default function Landing() {
   const [preselect, setPreselect] = useState("");
 
-  const handleEnquire = (program) => {
+  // Stable callback identities so child useEffect deps don't cause loops.
+  const handleEnquire = useCallback((program) => {
     setPreselect(program);
-  };
+  }, []);
+
+  const handlePreselectConsumed = useCallback(() => {
+    setPreselect("");
+  }, []);
 
   return (
     <div className="min-h-screen bg-white">
@@ -33,7 +38,7 @@ export default function Landing() {
         <Results />
         <DemoForm
           preselectProgram={preselect}
-          onPreselectConsumed={() => setPreselect("")}
+          onPreselectConsumed={handlePreselectConsumed}
         />
         <Faculty />
         <USP />

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { api, adminApi, API } from "@/lib/api";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -136,7 +136,7 @@ function Dashboard({ onLogout }) {
   const [toppers, setToppers] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setLoading(true);
     try {
       const [s, b, e, sc, t] = await Promise.all([
@@ -169,12 +169,11 @@ function Dashboard({ onLogout }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     refresh();
-     
-  }, []);
+  }, [refresh]);
 
   const exportCsv = async () => {
     try {
