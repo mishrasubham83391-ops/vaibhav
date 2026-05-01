@@ -5,7 +5,7 @@ This project is split into two deployable parts:
 | Part      | Stack                  | Recommended host          |
 | --------- | ---------------------- | ------------------------- |
 | Frontend  | React (CRA + Tailwind) | **Vercel**                |
-| Backend   | Python FastAPI         | **PythonAnywhere** (WSGI) |
+| Backend   | Python FastAPI         | **Render** *or* PythonAnywhere |
 | Database  | MongoDB                | **MongoDB Atlas**         |
 
 No code change is needed to switch hosts — everything is driven by
@@ -56,7 +56,56 @@ MONGO_URI=mongodb+srv://test:test@cluster0.w2rlirg.mongodb.net/pal_institute?ret
 
 ---
 
-## 2. Backend — PythonAnywhere
+## 2. Backend — Render (recommended)
+
+The repo ships with a `render.yaml` Blueprint at the project root.
+
+### One-click setup
+1. Push the repo to GitHub.
+2. https://dashboard.render.com → **New +** → **Blueprint** → select your repo.
+3. Render reads `render.yaml`, creates a web service, and prompts for the
+   secret env vars (`MONGO_URI`, `ADMIN_PASSWORD`, `CORS_ORIGINS`).
+4. Click **Apply** → first build runs `pip install -r backend/requirements.txt`
+   → start command boots `gunicorn app:app -k uvicorn.workers.UvicornWorker`.
+5. Visit `https://<your-service>.onrender.com/api/health` — expect
+   `{"status":"ok","db":"connected"}`.
+
+### Manual setup (if you skip the Blueprint)
+
+Render dashboard → **New + → Web Service** → connect repo, then set:
+
+| Field                | Value                                                                  |
+| -------------------- | ---------------------------------------------------------------------- |
+| **Root Directory**   | `backend`                                                              |
+| **Runtime**          | Python 3                                                               |
+| **Build Command**    | `pip install -r requirements.txt`                                      |
+| **Start Command**    | `gunicorn app:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --workers 2 --timeout 90` |
+| **Health Check Path**| `/api/health`                                                          |
+
+> **Why both `app:app` and `server:app` work** — `backend/app.py` is a tiny
+> shim that re-exports `app` from `server.py`, so either name is valid in
+> the start command.
+
+Add these env vars in the Render dashboard (Settings → Environment):
+
+| Variable          | Value                                                                                                  |
+| ----------------- | ------------------------------------------------------------------------------------------------------ |
+| `MONGO_URI`       | `mongodb+srv://test:test@cluster0.w2rlirg.mongodb.net/pal_institute?retryWrites=true&w=majority`       |
+| `DB_NAME`         | `pal_institute`                                                                                        |
+| `ADMIN_PASSWORD`  | (your strong password)                                                                                 |
+| `JWT_SECRET`      | a long random string (`python -c "import secrets;print(secrets.token_urlsafe(48))"`)                   |
+| `CORS_ORIGINS`    | `https://<your-vercel-app>.vercel.app` (comma-separated for multiple)                                  |
+
+### Render notes
+
+- **Free tier** spins down after 15 min idle → first request after sleep takes ~30 s.
+- **MongoDB Atlas** must allow Render's outbound IPs. The simplest setup is
+  `0.0.0.0/0` in Atlas → Network Access (acceptable when DB user has a strong password).
+- Logs are visible in real time in Render dashboard → **Logs** tab.
+
+---
+
+## 2b. Backend — PythonAnywhere (alternative)
 
 ### a) Push the code to PythonAnywhere
 

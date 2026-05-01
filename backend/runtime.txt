@@ -1,0 +1,2 @@
+# Pin Python so the build is reproducible on Render (and matches local dev).
+3.11.9

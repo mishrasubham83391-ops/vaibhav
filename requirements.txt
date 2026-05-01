@@ -1,0 +1,4 @@
+# Root-level requirements.txt is a fallback for hosts that auto-detect from
+# the repo root (Render without a `rootDir` setting, Heroku, etc.). It just
+# delegates to the canonical list inside backend/.
+-r backend/requirements.txt
