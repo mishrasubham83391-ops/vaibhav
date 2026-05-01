@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from pymongo import MongoClient
 import os
+import sys
 import logging
 import io
 import csv
@@ -31,10 +32,23 @@ load_dotenv(ROOT_DIR / ".env")
 # Prefer MONGO_URI (Atlas / production). Fall back to MONGO_URL (local dev).
 MONGO_URI = os.environ.get("MONGO_URI") or os.environ.get("MONGO_URL")
 if not MONGO_URI:
+    # Print a loud, human-readable message before raising so it shows up
+    # in Render / PythonAnywhere / Vercel logs at process boot.
+    sys.stderr.write(
+        "\n" + "=" * 70 + "\n"
+        "FATAL: MONGO_URI is not set.\n"
+        "Add it to your hosting provider's environment variables.\n"
+        "Example (MongoDB Atlas):\n"
+        "  MONGO_URI=mongodb+srv://<user>:<pass>@cluster0.xxxxx.mongodb.net/"
+        "pal_institute?retryWrites=true&w=majority\n"
+        + "=" * 70 + "\n"
+    )
+    sys.stderr.flush()
     raise RuntimeError("MONGO_URI (or MONGO_URL) must be set in environment.")
 
 DB_NAME = os.environ.get("DB_NAME", "pal_institute")
 
+# serverSelectionTimeoutMS keeps boot fast even if Atlas is slow to respond.
 mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=10000)
 db = mongo_client[DB_NAME]
 
