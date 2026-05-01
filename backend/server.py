@@ -1,66 +1,111 @@
 """
 PAL Institute API — FastAPI app.
 
-Runs as ASGI under uvicorn (local dev / Emergent supervisor) and as WSGI
-under PythonAnywhere via wsgi.py (uses a2wsgi adapter).
-
-Routes are sync (def, not async def) and use pymongo so the same code
-works in both ASGI and WSGI environments without event-loop conflicts.
+Resilient boot:
+- All environment variable reads use ``os.getenv`` with fallbacks.
+- Missing ``MONGO_URI`` logs a clear warning but does NOT crash the
+  process. The server still boots so the host (Render / PA / Vercel)
+  can stream logs and the operator can see what's wrong.
+- MongoDB connection is created lazily on first use, so a transient
+  Atlas outage at boot time doesn't kill the worker.
+- Startup events are wrapped to log full tracebacks instead of failing
+  silently.
 """
-from fastapi import FastAPI, APIRouter, HTTPException, Header, Depends
-from fastapi.responses import StreamingResponse
-from dotenv import load_dotenv
-from starlette.middleware.cors import CORSMiddleware
-from pymongo import MongoClient
 import os
 import sys
 import logging
+import traceback
 import io
 import csv
 import time
 import uuid
-import jwt
 from pathlib import Path
-from pydantic import BaseModel, ConfigDict
 from typing import Optional, Literal
 from datetime import datetime, timezone
 
+import jwt
+from dotenv import load_dotenv
+from fastapi import FastAPI, APIRouter, HTTPException, Header, Depends
+from fastapi.responses import StreamingResponse, JSONResponse
+from starlette.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, ConfigDict
+from pymongo import MongoClient
+from pymongo.errors import PyMongoError
+
+# ------------------------------------------------------------------
+# Logging — go to stderr so Render / PA / supervisor capture it.
+# ------------------------------------------------------------------
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    stream=sys.stderr,
+)
+logger = logging.getLogger("pal-institute")
+
+# ------------------------------------------------------------------
+# Env loading
+# ------------------------------------------------------------------
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
-# ---------- MongoDB ----------
-# Prefer MONGO_URI (Atlas / production). Fall back to MONGO_URL (local dev).
-MONGO_URI = os.environ.get("MONGO_URI") or os.environ.get("MONGO_URL")
-if not MONGO_URI:
-    # Print a loud, human-readable message before raising so it shows up
-    # in Render / PythonAnywhere / Vercel logs at process boot.
-    sys.stderr.write(
-        "\n" + "=" * 70 + "\n"
-        "FATAL: MONGO_URI is not set.\n"
-        "Add it to your hosting provider's environment variables.\n"
-        "Example (MongoDB Atlas):\n"
-        "  MONGO_URI=mongodb+srv://<user>:<pass>@cluster0.xxxxx.mongodb.net/"
-        "pal_institute?retryWrites=true&w=majority\n"
-        + "=" * 70 + "\n"
-    )
-    sys.stderr.flush()
-    raise RuntimeError("MONGO_URI (or MONGO_URL) must be set in environment.")
-
-DB_NAME = os.environ.get("DB_NAME", "pal_institute")
-
-# serverSelectionTimeoutMS keeps boot fast even if Atlas is slow to respond.
-mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=10000)
-db = mongo_client[DB_NAME]
-
-# ---------- Admin auth (stateless JWT) ----------
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
-JWT_SECRET = os.environ.get(
+MONGO_URI = os.getenv("MONGO_URI") or os.getenv("MONGO_URL")
+DB_NAME = os.getenv("DB_NAME", "pal_institute")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
+JWT_SECRET = os.getenv(
     "JWT_SECRET",
     "pal-institute-default-secret-change-in-production",
 )
 JWT_ALG = "HS256"
 
-# ---------- App ----------
+if not MONGO_URI:
+    # Loud warning but no crash. Health check / first DB call will surface
+    # the same problem at runtime with a 503 instead of bringing down the
+    # whole web service.
+    logger.warning(
+        "\n%s\n"
+        "MONGO_URI is not set. The API will boot but every database call "
+        "will fail until you add MONGO_URI to your environment.\n"
+        "Example (MongoDB Atlas):\n"
+        "  MONGO_URI=mongodb+srv://<user>:<pass>@cluster0.xxxxx.mongodb.net/"
+        "pal_institute?retryWrites=true&w=majority\n%s",
+        "=" * 70,
+        "=" * 70,
+    )
+
+# ------------------------------------------------------------------
+# Lazy MongoDB connection
+# ------------------------------------------------------------------
+_mongo_client: Optional[MongoClient] = None
+
+
+def get_db():
+    """Return the active database. Creates the client on first call.
+
+    A connection failure here surfaces as an HTTPException(503) at the
+    request boundary instead of crashing the worker.
+    """
+    global _mongo_client
+    if not MONGO_URI:
+        raise HTTPException(
+            status_code=503,
+            detail="Database not configured. MONGO_URI environment variable is missing.",
+        )
+    if _mongo_client is None:
+        try:
+            _mongo_client = MongoClient(
+                MONGO_URI,
+                serverSelectionTimeoutMS=int(os.getenv("MONGO_TIMEOUT_MS", "10000")),
+            )
+            logger.info("MongoDB client created (db=%s)", DB_NAME)
+        except PyMongoError as exc:
+            logger.exception("Failed to create MongoDB client: %s", exc)
+            raise HTTPException(status_code=503, detail="Database connection failed.")
+    return _mongo_client[DB_NAME]
+
+
+# ------------------------------------------------------------------
+# App + auth
+# ------------------------------------------------------------------
 app = FastAPI(title="PAL Institute API")
 api_router = APIRouter(prefix="/api")
 
@@ -87,7 +132,9 @@ def require_admin(authorization: Optional[str] = Header(None)) -> bool:
     return True
 
 
-# ---------- Models ----------
+# ------------------------------------------------------------------
+# Models
+# ------------------------------------------------------------------
 class DemoBookingCreate(BaseModel):
     model_config = ConfigDict(extra="ignore")
     student_name: str
@@ -152,7 +199,9 @@ class LoginRequest(BaseModel):
     password: str
 
 
-# ---------- Health ----------
+# ------------------------------------------------------------------
+# Health
+# ------------------------------------------------------------------
 @api_router.get("/")
 def root():
     return {"message": "PAL Institute API", "status": "ok"}
@@ -160,14 +209,35 @@ def root():
 
 @api_router.get("/health")
 def health():
+    """Liveness + DB readiness probe.
+
+    Always returns 200 so Render's health-check doesn't kill the service
+    when MongoDB is temporarily unreachable. The body indicates DB state.
+    """
+    info = {
+        "status": "ok",
+        "service": "pal-institute-api",
+        "mongo_uri_configured": bool(MONGO_URI),
+        "db_name": DB_NAME,
+    }
+    if not MONGO_URI:
+        info["db"] = "not_configured"
+        return JSONResponse(info, status_code=200)
     try:
-        mongo_client.admin.command("ping")
-        return {"status": "ok", "db": "connected"}
-    except Exception as e:
-        return {"status": "degraded", "db": "error", "detail": str(e)}
+        # Force a real round-trip to verify Atlas reachability.
+        client = _mongo_client or MongoClient(MONGO_URI, serverSelectionTimeoutMS=3000)
+        client.admin.command("ping")
+        info["db"] = "connected"
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("DB health check failed: %s", exc)
+        info["db"] = "error"
+        info["db_error"] = str(exc)[:200]
+    return JSONResponse(info, status_code=200)
 
 
-# ---------- Public Form Endpoints ----------
+# ------------------------------------------------------------------
+# Public form endpoints
+# ------------------------------------------------------------------
 @api_router.post("/bookings")
 def create_booking(payload: DemoBookingCreate):
     if not payload.consent:
@@ -179,7 +249,7 @@ def create_booking(payload: DemoBookingCreate):
     doc["id"] = str(uuid.uuid4())
     doc["status"] = "New"
     doc["created_at"] = utcnow_iso()
-    db.demo_bookings.insert_one(doc)
+    get_db().demo_bookings.insert_one(doc)
     doc.pop("_id", None)
     return {"success": True, "id": doc["id"]}
 
@@ -195,7 +265,7 @@ def create_enquiry(payload: EnquiryCreate):
     doc["id"] = str(uuid.uuid4())
     doc["status"] = "New"
     doc["created_at"] = utcnow_iso()
-    db.enquiries.insert_one(doc)
+    get_db().enquiries.insert_one(doc)
     doc.pop("_id", None)
     return {"success": True, "id": doc["id"]}
 
@@ -211,7 +281,7 @@ def create_scholarship(payload: ScholarshipCreate):
     doc["id"] = str(uuid.uuid4())
     doc["status"] = "New"
     doc["created_at"] = utcnow_iso()
-    db.scholarship_registrations.insert_one(doc)
+    get_db().scholarship_registrations.insert_one(doc)
     doc.pop("_id", None)
     return {"success": True, "id": doc["id"]}
 
@@ -221,17 +291,19 @@ def create_contact(payload: ContactCreate):
     doc = payload.model_dump()
     doc["id"] = str(uuid.uuid4())
     doc["created_at"] = utcnow_iso()
-    db.contact_messages.insert_one(doc)
+    get_db().contact_messages.insert_one(doc)
     doc.pop("_id", None)
     return {"success": True, "id": doc["id"]}
 
 
 @api_router.get("/toppers")
 def list_toppers():
-    return list(db.toppers.find({}, {"_id": 0}).sort("created_at", -1).limit(500))
+    return list(get_db().toppers.find({}, {"_id": 0}).sort("created_at", -1).limit(500))
 
 
-# ---------- Admin Auth ----------
+# ------------------------------------------------------------------
+# Admin auth
+# ------------------------------------------------------------------
 @api_router.post("/admin/login")
 def admin_login(payload: LoginRequest):
     if payload.password != ADMIN_PASSWORD:
@@ -241,7 +313,6 @@ def admin_login(payload: LoginRequest):
 
 @api_router.post("/admin/logout")
 def admin_logout(_: bool = Depends(require_admin)):
-    # Stateless JWT: client just discards the token.
     return {"success": True}
 
 
@@ -250,15 +321,17 @@ def admin_verify(_: bool = Depends(require_admin)):
     return {"valid": True}
 
 
-# ---------- Admin Lists ----------
+# ------------------------------------------------------------------
+# Admin lists
+# ------------------------------------------------------------------
 @api_router.get("/admin/bookings")
 def admin_list_bookings(_: bool = Depends(require_admin)):
-    return list(db.demo_bookings.find({}, {"_id": 0}).sort("created_at", -1).limit(2000))
+    return list(get_db().demo_bookings.find({}, {"_id": 0}).sort("created_at", -1).limit(2000))
 
 
 @api_router.patch("/admin/bookings/{item_id}/status")
 def admin_update_booking_status(item_id: str, payload: StatusUpdate, _: bool = Depends(require_admin)):
-    result = db.demo_bookings.update_one({"id": item_id}, {"$set": {"status": payload.status}})
+    result = get_db().demo_bookings.update_one({"id": item_id}, {"$set": {"status": payload.status}})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Not found")
     return {"success": True}
@@ -266,12 +339,12 @@ def admin_update_booking_status(item_id: str, payload: StatusUpdate, _: bool = D
 
 @api_router.get("/admin/enquiries")
 def admin_list_enquiries(_: bool = Depends(require_admin)):
-    return list(db.enquiries.find({}, {"_id": 0}).sort("created_at", -1).limit(2000))
+    return list(get_db().enquiries.find({}, {"_id": 0}).sort("created_at", -1).limit(2000))
 
 
 @api_router.patch("/admin/enquiries/{item_id}/status")
 def admin_update_enquiry_status(item_id: str, payload: StatusUpdate, _: bool = Depends(require_admin)):
-    result = db.enquiries.update_one({"id": item_id}, {"$set": {"status": payload.status}})
+    result = get_db().enquiries.update_one({"id": item_id}, {"$set": {"status": payload.status}})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Not found")
     return {"success": True}
@@ -279,39 +352,44 @@ def admin_update_enquiry_status(item_id: str, payload: StatusUpdate, _: bool = D
 
 @api_router.get("/admin/scholarship")
 def admin_list_scholarship(_: bool = Depends(require_admin)):
-    return list(db.scholarship_registrations.find({}, {"_id": 0}).sort("created_at", -1).limit(2000))
+    return list(get_db().scholarship_registrations.find({}, {"_id": 0}).sort("created_at", -1).limit(2000))
 
 
 @api_router.get("/admin/contacts")
 def admin_list_contacts(_: bool = Depends(require_admin)):
-    return list(db.contact_messages.find({}, {"_id": 0}).sort("created_at", -1).limit(2000))
+    return list(get_db().contact_messages.find({}, {"_id": 0}).sort("created_at", -1).limit(2000))
 
 
-# ---------- Admin Toppers / Results ----------
+# ------------------------------------------------------------------
+# Admin toppers
+# ------------------------------------------------------------------
 @api_router.post("/admin/toppers")
 def admin_create_topper(payload: TopperCreate, _: bool = Depends(require_admin)):
     doc = payload.model_dump()
     doc["id"] = str(uuid.uuid4())
     doc["created_at"] = utcnow_iso()
-    db.toppers.insert_one(doc)
+    get_db().toppers.insert_one(doc)
     doc.pop("_id", None)
     return doc
 
 
 @api_router.delete("/admin/toppers/{item_id}")
 def admin_delete_topper(item_id: str, _: bool = Depends(require_admin)):
-    result = db.toppers.delete_one({"id": item_id})
+    result = get_db().toppers.delete_one({"id": item_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Not found")
     return {"success": True}
 
 
-# ---------- Admin Dashboard ----------
+# ------------------------------------------------------------------
+# Admin dashboard
+# ------------------------------------------------------------------
 @api_router.get("/admin/dashboard")
 def admin_dashboard(_: bool = Depends(require_admin)):
-    bookings = list(db.demo_bookings.find({}, {"_id": 0}))
-    enquiries = list(db.enquiries.find({}, {"_id": 0}))
-    scholarship = list(db.scholarship_registrations.find({}, {"_id": 0}))
+    db_ = get_db()
+    bookings = list(db_.demo_bookings.find({}, {"_id": 0}))
+    enquiries = list(db_.enquiries.find({}, {"_id": 0}))
+    scholarship = list(db_.scholarship_registrations.find({}, {"_id": 0}))
 
     from collections import Counter
 
@@ -352,12 +430,15 @@ def admin_dashboard(_: bool = Depends(require_admin)):
     }
 
 
-# ---------- Admin CSV Export ----------
+# ------------------------------------------------------------------
+# Admin CSV export
+# ------------------------------------------------------------------
 @api_router.get("/admin/export/csv")
 def admin_export_csv(_: bool = Depends(require_admin)):
-    bookings = list(db.demo_bookings.find({}, {"_id": 0}))
-    enquiries = list(db.enquiries.find({}, {"_id": 0}))
-    scholarship = list(db.scholarship_registrations.find({}, {"_id": 0}))
+    db_ = get_db()
+    bookings = list(db_.demo_bookings.find({}, {"_id": 0}))
+    enquiries = list(db_.enquiries.find({}, {"_id": 0}))
+    scholarship = list(db_.scholarship_registrations.find({}, {"_id": 0}))
 
     output = io.StringIO()
     writer = csv.writer(output)
@@ -402,10 +483,11 @@ def admin_export_csv(_: bool = Depends(require_admin)):
 
 app.include_router(api_router)
 
-# ---------- CORS ----------
-# CORS_ORIGINS env: comma-separated list of allowed origins.
-# Use "*" to allow all (fine for this public marketing site).
-_cors = os.environ.get("CORS_ORIGINS", "*").strip()
+
+# ------------------------------------------------------------------
+# CORS
+# ------------------------------------------------------------------
+_cors = os.getenv("CORS_ORIGINS", "*").strip()
 allowed_origins = ["*"] if _cors == "*" else [o.strip() for o in _cors.split(",") if o.strip()]
 
 app.add_middleware(
@@ -416,13 +498,32 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
-logger = logging.getLogger(__name__)
+
+# ------------------------------------------------------------------
+# Startup / shutdown — wrapped so any exception is logged with traceback
+# instead of silently killing the worker.
+# ------------------------------------------------------------------
+@app.on_event("startup")
+def on_startup():
+    try:
+        logger.info("PAL Institute API starting up")
+        logger.info("  PYTHON     : %s", sys.version.split()[0])
+        logger.info("  CWD        : %s", Path.cwd())
+        logger.info("  MONGO_URI  : %s", "set" if MONGO_URI else "MISSING")
+        logger.info("  DB_NAME    : %s", DB_NAME)
+        logger.info("  CORS       : %s", allowed_origins)
+        logger.info("  JWT_SECRET : %s", "default (CHANGE IT)" if JWT_SECRET.startswith("pal-institute-default") else "set")
+    except Exception:  # noqa: BLE001
+        logger.error("Startup hook failed:\n%s", traceback.format_exc())
 
 
 @app.on_event("shutdown")
-def shutdown_db_client():
-    mongo_client.close()
+def on_shutdown():
+    global _mongo_client
+    if _mongo_client is not None:
+        try:
+            _mongo_client.close()
+            logger.info("MongoDB client closed")
+        except Exception:  # noqa: BLE001
+            logger.error("Shutdown hook failed:\n%s", traceback.format_exc())
+        _mongo_client = None
