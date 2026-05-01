@@ -21,7 +21,7 @@ services:
     autoDeploy: true
     envVars:
       - key: PYTHON_VERSION
-        value: "3.11.9"
+        value: "3.10.13"
       - key: MONGO_URI
         sync: false                        # set in Render dashboard (Atlas URI)
       - key: DB_NAME
