@@ -1,22 +1,21 @@
 # PAL Institute backend — production dependencies only.
-# Compatible with Python 3.10+ (Render pins 3.10.13 via runtime.txt).
+# Compatible with Python 3.10 — 3.14 (all pinned packages publish wheels for those).
 #
-# DO NOT add internal/non-PyPI packages here (e.g. emergentintegrations) —
-# Render and other public hosts can't resolve them and the build will fail.
+# DO NOT add internal/non-PyPI packages here (e.g. emergentintegrations).
 
 # Web framework + ASGI server
-fastapi==0.110.1
-uvicorn[standard]==0.25.0
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
 gunicorn==23.0.0
 
-# WSGI bridge for hosts that only support WSGI (e.g. PythonAnywhere).
-# Render does not need this, but it is tiny and keeps deploys portable.
+# WSGI bridge for hosts that only support WSGI (e.g. PythonAnywhere)
 a2wsgi==1.10.10
 
 # Database driver (sync — works under both ASGI and WSGI workers)
-pymongo==4.6.3
+pymongo==4.10.1
 
-# Core utilities
-pydantic==2.6.4
+# Core utilities — pydantic 2.10+ ships pre-built wheels for Python 3.13/3.14
+# so no Rust toolchain is required at install time.
+pydantic==2.10.4
 python-dotenv==1.0.1
 PyJWT==2.10.1
