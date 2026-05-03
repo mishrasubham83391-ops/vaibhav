@@ -93,8 +93,16 @@ export default function Results() {
       try {
         const res = await api.get("/toppers");
         if (cancelled) return;
-        const list = Array.isArray(res.data) && res.data.length ? res.data : PLACEHOLDER;
-        setItems(list);
+        const raw = Array.isArray(res.data) && res.data.length ? res.data : PLACEHOLDER;
+        // Safety: dedupe by id in case the API ever returns duplicates.
+        const seen = new Set();
+        const unique = raw.filter((t) => {
+          const key = t?.id ?? t?._id;
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        setItems(unique.length ? unique : PLACEHOLDER);
       } catch {
         if (!cancelled) setItems(PLACEHOLDER);
       }
@@ -102,13 +110,15 @@ export default function Results() {
     return () => { cancelled = true; };
   }, []);
 
-  // Duplicate the head of the list at the tail so the translate animation
-  // always has enough cards to fill the viewport; this gives a seamless
-  // wrap-around without an ugly jump back to 0.
+  // Only pad the tail with a few head-cards when there are MORE items
+  // than visible slots — that's when the translate animation actually
+  // needs wrap-around filler. Otherwise every topper must appear exactly
+  // ONCE (padding would cause duplicate rendering when you add a single
+  // topper on a breakpoint that shows 2/3/4 cards).
   const display = useMemo(() => {
     if (!items.length) return [];
-    const need = visible; // pad with up to `visible` cards at the end
-    return items.concat(items.slice(0, need));
+    if (items.length <= visible) return items;
+    return items.concat(items.slice(0, visible));
   }, [items, visible]);
 
   // Reset paging if the list shrinks/changes.

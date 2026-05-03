@@ -624,3 +624,86 @@ test_plan:
 agent_communication:
   - agent: "testing"
     message: "Comprehensive smoke test of toppers API endpoints completed. Initial backend startup failure due to dependency version mismatch (pydantic_core 2.41.5 incompatible with pydantic 2.10.4, and starlette 0.37.2 incompatible with fastapi 0.115.6). Fixed by reinstalling pydantic with correct pydantic-core 2.27.2 and upgrading starlette to 0.41.3. All 10 test scenarios PASSED: (1) Admin login returns token, (2) Public toppers endpoint accessible without auth, (3) Create topper with auth, (4) Sorting by created_at DESC verified, (5) Create topper with base64 photo, (6) Delete topper, (7) Count verification after delete, (8) Cleanup delete, (9) Count restored to original, (10) Public endpoint confirmed. No regression detected in toppers API functionality."
+
+
+user_problem_statement: "Test the duplicate-topper fix on the PAL Institute site. Verify that toppers appear EXACTLY ONCE on the landing page (no duplicates) with 1, 2, and 5 toppers. Test carousel auto-slide behavior."
+
+frontend:
+  - task: "Toppers carousel - Single topper (no duplicates)"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/Results.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TEST A PASSED: Single topper 'Unique Test Alpha' appears EXACTLY ONCE on landing page. Count verified: 1 occurrence in #results section. No duplicates detected."
+
+  - task: "Toppers carousel - Two toppers (no duplicates, correct order)"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/Results.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TEST B PASSED: Both toppers appear EXACTLY ONCE. 'Unique Test Alpha': 1 occurrence, 'Unique Test Beta': 1 occurrence. Newest-first sorting verified - Beta appears first as expected."
+
+  - task: "Toppers carousel - Five toppers (no duplicates, auto-slide)"
+    implemented: true
+    working: false
+    file: "/app/frontend/src/components/Results.jsx"
+    stuck_count: 1
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: false
+        agent: "testing"
+        comment: "❌ CRITICAL BUG: With 5 toppers and 4 visible slots (desktop viewport 1920x800), duplicates are appearing. Counts: Alpha=1, Beta=2, Gamma=2, Delta=2, Epsilon=2. Visible cards array shows 9 cards with duplicates: ['Epsilon', 'Delta', 'Gamma', 'Beta', 'Alpha', 'Epsilon', 'Delta', 'Gamma', 'Beta']. ROOT CAUSE: Line 121 in Results.jsx - padding logic `items.concat(items.slice(0, visible))` creates duplicates when items.length (5) > visible (4). This adds first 4 items again, resulting in 9 total cards. CAROUSEL AUTO-SLIDE ALSO BROKEN: Transform stuck at translateX(0%) for 10+ seconds, no movement detected. The carousel should auto-advance every 4 seconds but page state remains at 0."
+
+  - task: "Console errors during topper tests"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/Results.jsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TEST D PASSED: No critical console errors detected during entire test run. Total console messages: 12, errors: 0. Webpack deprecation warnings and 502 health-check errors are acceptable and ignored as per test criteria."
+
+backend:
+  - task: "Toppers API endpoints (CRUD operations)"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ All toppers API endpoints working correctly during test: POST /api/admin/toppers (create), GET /api/toppers (list), DELETE /api/admin/toppers/{id} (delete). Admin authentication with password 'admin123' successful. Created 5 test toppers, verified newest-first sorting, deleted all 5 successfully. Backend logs show all 200 OK responses."
+
+metadata:
+  created_by: "testing_agent"
+  version: "1.3"
+  test_sequence: 5
+  run_ui: true
+
+test_plan:
+  current_focus:
+    - "Toppers carousel - Five toppers (no duplicates, auto-slide)"
+  stuck_tasks:
+    - "Toppers carousel - Five toppers (no duplicates, auto-slide)"
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "testing"
+    message: "Duplicate-topper fix testing completed. CRITICAL BUG FOUND: When 5 toppers are added with 4 visible slots (desktop viewport), the carousel padding logic in Results.jsx line 121 creates duplicates. The code `items.concat(items.slice(0, visible))` adds the first 4 items again, resulting in 9 cards where Beta/Gamma/Delta/Epsilon each appear TWICE. Additionally, carousel auto-slide is broken - transform stays at translateX(0%) with no movement after 10 seconds. Tests A (1 topper) and B (2 toppers) PASSED with no duplicates. Test C (5 toppers) FAILED. Backend APIs working correctly. Fix needed: Revise padding logic to prevent duplicates when items.length is close to visible count, and debug auto-advance timer."
