@@ -529,3 +529,98 @@ test_plan:
 
   - agent: "testing"
     message: "Comprehensive testing of social proof popup notifications and favicon completed. All 4 test scenarios PASSED: (1) Favicon and logo files load with HTTP 200 and correct file sizes (15.3KB and 35.6KB), (2) Social proof popups appear at correct intervals with valid data and no consecutive duplicates, (3) Close button dismisses popup and stops further popups, (4) No critical console errors. Feature is production-ready."
+
+
+user_problem_statement: "Smoke-test the existing toppers API endpoints to confirm no regression"
+
+backend:
+  - task: "Admin login endpoint"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: false
+        agent: "testing"
+        comment: "Initial test failed with 502 error. Backend service was crashing on startup due to pydantic/pydantic_core version mismatch (ImportError: cannot import name 'validate_core_schema'). pydantic 2.10.4 was installed but pydantic_core was at 2.41.5 instead of required ~2.27.0. Also starlette 0.37.2 was incompatible with fastapi 0.115.6 which requires starlette>=0.40.0."
+      - working: true
+        agent: "testing"
+        comment: "✅ FIXED: Reinstalled pydantic==2.10.4 with correct pydantic-core 2.27.2 and upgraded starlette to 0.41.3. Backend now starts successfully. POST /api/admin/login with password 'admin123' returns 200 with valid JWT token (length: 125 chars)."
+
+  - task: "Public toppers list endpoint"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED: GET /api/toppers (public, no auth required) returns 200 with array of toppers. Verified endpoint is accessible without authentication header."
+
+  - task: "Create topper endpoint (admin)"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED: POST /api/admin/toppers with Bearer token authentication successfully creates topper. Returns 200 with complete topper object including generated UUID 'id' field. Tested with both empty photo string and base64 data URL photo - both work correctly."
+
+  - task: "Toppers sorting by created_at DESC"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED: GET /api/toppers returns toppers sorted by created_at in descending order (newest first). Verified newly created topper appears as first item in array immediately after creation."
+
+  - task: "Delete topper endpoint (admin)"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED: DELETE /api/admin/toppers/{id} with Bearer token authentication successfully deletes topper. Returns 200 with success:true. Verified count decreases correctly after deletion."
+
+  - task: "Photo storage as base64 string"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED: Topper creation with base64 data URL photo (data:image/jpeg;base64,...) works correctly. Photo field accepts and stores long base64 strings without issues."
+
+metadata:
+  created_by: "testing_agent"
+  version: "1.2"
+  test_sequence: 4
+  run_ui: false
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "testing"
+    message: "Comprehensive smoke test of toppers API endpoints completed. Initial backend startup failure due to dependency version mismatch (pydantic_core 2.41.5 incompatible with pydantic 2.10.4, and starlette 0.37.2 incompatible with fastapi 0.115.6). Fixed by reinstalling pydantic with correct pydantic-core 2.27.2 and upgrading starlette to 0.41.3. All 10 test scenarios PASSED: (1) Admin login returns token, (2) Public toppers endpoint accessible without auth, (3) Create topper with auth, (4) Sorting by created_at DESC verified, (5) Create topper with base64 photo, (6) Delete topper, (7) Count verification after delete, (8) Cleanup delete, (9) Count restored to original, (10) Public endpoint confirmed. No regression detected in toppers API functionality."

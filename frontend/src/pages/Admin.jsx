@@ -485,13 +485,69 @@ function LeadTable({ items, onStatusChange, columns, rowCells, noStatus, testid 
 function ToppersManager({ items, onChange }) {
   const [form, setForm] = useState({ name: "", exam: "", rank: "", year: "", photo: "" });
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  // Resize uploaded image to a sane size and encode as data URL so it can
+  // be sent as a plain string to the existing backend (which stores photo
+  // as an Optional[str]). This means NO backend changes are required.
+  const handleFile = (ev) => {
+    const file = ev.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file");
+      return;
+    }
+    setUploading(true);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          // Target max dimension 600 px, keep aspect ratio.
+          const MAX = 600;
+          let { width, height } = img;
+          if (width > height && width > MAX) {
+            height = Math.round((height * MAX) / width);
+            width = MAX;
+          } else if (height > MAX) {
+            width = Math.round((width * MAX) / height);
+            height = MAX;
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx?.drawImage(img, 0, 0, width, height);
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+          set("photo", dataUrl);
+          toast.success("Image ready");
+        } catch {
+          toast.error("Could not process image");
+        } finally {
+          setUploading(false);
+        }
+      };
+      img.onerror = () => {
+        setUploading(false);
+        toast.error("Invalid image");
+      };
+      img.src = reader.result;
+    };
+    reader.onerror = () => {
+      setUploading(false);
+      toast.error("Could not read file");
+    };
+    reader.readAsDataURL(file);
+    // Allow the same file to be picked again later.
+    ev.target.value = "";
+  };
 
   const add = async (e) => {
     e.preventDefault();
     if (!form.name || !form.exam || !form.rank || !form.year) {
-      toast.error("Fill name, exam, rank, year");
+      toast.error("Fill name, class/course, rank, year");
       return;
     }
     setBusy(true);
@@ -523,18 +579,45 @@ function ToppersManager({ items, onChange }) {
       <div className="bg-white rounded-xl border border-gray-100 p-4 md:p-5">
         <h3 className="font-heading text-base font-semibold text-navy mb-3">Add Topper</h3>
         <form onSubmit={add} className="grid md:grid-cols-5 gap-3" data-testid="topper-form">
-          <input className="border border-gray-300 rounded px-2 py-1.5 text-sm" placeholder="Name" data-testid="topper-name" value={form.name} onChange={(e) => set("name", e.target.value)} />
-          <input className="border border-gray-300 rounded px-2 py-1.5 text-sm" placeholder="Exam (e.g. JEE)" data-testid="topper-exam" value={form.exam} onChange={(e) => set("exam", e.target.value)} />
-          <input className="border border-gray-300 rounded px-2 py-1.5 text-sm" placeholder="Rank / %" data-testid="topper-rank" value={form.rank} onChange={(e) => set("rank", e.target.value)} />
-          <input className="border border-gray-300 rounded px-2 py-1.5 text-sm" placeholder="Year" data-testid="topper-year" value={form.year} onChange={(e) => set("year", e.target.value)} />
-          <input className="border border-gray-300 rounded px-2 py-1.5 text-sm" placeholder="Photo URL (optional)" value={form.photo} onChange={(e) => set("photo", e.target.value)} />
+          <input className="border border-gray-300 rounded px-2 py-1.5 text-sm" placeholder="Student Name" data-testid="topper-name" value={form.name} onChange={(e) => set("name", e.target.value)} />
+          <input className="border border-gray-300 rounded px-2 py-1.5 text-sm" placeholder="Class / Course (e.g. JEE, NEET, Class 10)" data-testid="topper-exam" value={form.exam} onChange={(e) => set("exam", e.target.value)} />
+          <input className="border border-gray-300 rounded px-2 py-1.5 text-sm" placeholder="Percentage / Rank" data-testid="topper-rank" value={form.rank} onChange={(e) => set("rank", e.target.value)} />
+          <input className="border border-gray-300 rounded px-2 py-1.5 text-sm" placeholder="Year (e.g. 2025)" data-testid="topper-year" value={form.year} onChange={(e) => set("year", e.target.value)} />
+          <input className="border border-gray-300 rounded px-2 py-1.5 text-sm" placeholder="Photo URL (optional)" value={form.photo?.startsWith("data:") ? "" : form.photo} onChange={(e) => set("photo", e.target.value)} />
+
+          <div className="md:col-span-5 flex flex-wrap items-center gap-3">
+            <label className="inline-flex items-center gap-2 text-xs text-navy cursor-pointer bg-bg-alt border border-gray-200 px-3 py-2 rounded hover:bg-gray-100">
+              {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+              <span>{uploading ? "Processing…" : "Upload Image (optional)"}</span>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleFile}
+                data-testid="topper-photo-upload"
+                className="hidden"
+              />
+            </label>
+            {form.photo && (
+              <div className="flex items-center gap-2">
+                <img src={form.photo} alt="preview" className="w-10 h-12 object-cover rounded border border-gray-200" />
+                <button
+                  type="button"
+                  onClick={() => set("photo", "")}
+                  className="text-xs text-red-600 hover:text-red-800"
+                >
+                  Remove
+                </button>
+              </div>
+            )}
+          </div>
+
           <button
             type="submit"
             disabled={busy}
             data-testid="topper-add-btn"
             className="md:col-span-5 inline-flex items-center justify-center gap-2 bg-navy text-white font-medium py-2 rounded hover:bg-navy-600 disabled:opacity-60"
           >
-            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Add Topper
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Save Topper
           </button>
         </form>
       </div>
@@ -544,9 +627,10 @@ function ToppersManager({ items, onChange }) {
           <table className="w-full text-sm">
             <thead className="bg-bg-alt text-navy">
               <tr>
+                <th className="text-left font-heading font-semibold px-3 py-2.5">Photo</th>
                 <th className="text-left font-heading font-semibold px-3 py-2.5">Name</th>
-                <th className="text-left font-heading font-semibold px-3 py-2.5">Exam</th>
-                <th className="text-left font-heading font-semibold px-3 py-2.5">Rank/%</th>
+                <th className="text-left font-heading font-semibold px-3 py-2.5">Class / Course</th>
+                <th className="text-left font-heading font-semibold px-3 py-2.5">Rank / %</th>
                 <th className="text-left font-heading font-semibold px-3 py-2.5">Year</th>
                 <th className="text-left font-heading font-semibold px-3 py-2.5">Actions</th>
               </tr>
@@ -554,6 +638,13 @@ function ToppersManager({ items, onChange }) {
             <tbody className="divide-y divide-gray-100">
               {items.map((t) => (
                 <tr key={t.id}>
+                  <td className="px-3 py-2.5">
+                    {t.photo ? (
+                      <img src={t.photo} alt={t.name} className="w-10 h-12 object-cover rounded border border-gray-200" />
+                    ) : (
+                      <div className="w-10 h-12 rounded bg-bg-alt border border-gray-200 flex items-center justify-center text-[10px] text-muted-foreground">—</div>
+                    )}
+                  </td>
                   <td className="px-3 py-2.5 font-medium text-navy">{t.name}</td>
                   <td className="px-3 py-2.5">{t.exam}</td>
                   <td className="px-3 py-2.5">{t.rank}</td>
@@ -571,7 +662,7 @@ function ToppersManager({ items, onChange }) {
               ))}
               {items.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground text-sm">
+                  <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground text-sm">
                     No toppers added yet.
                   </td>
                 </tr>
