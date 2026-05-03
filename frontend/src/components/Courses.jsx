@@ -75,6 +75,8 @@ function CourseCard({ course, onEnquire }) {
         <button
           onClick={() => onEnquire(course.title)}
           data-testid={`course-enquire-${course.id}`}
+          data-course={course.title}
+          data-course-id={course.id}
           className="mt-auto inline-flex items-center justify-center gap-2 w-full bg-navy text-white font-semibold py-2.5 rounded-md hover:bg-navy-600 transition group"
         >
           Enquire Now

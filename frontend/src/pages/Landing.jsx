@@ -21,6 +21,17 @@ export default function Landing() {
   // Stable callback identities so child useEffect deps don't cause loops.
   const handleEnquire = useCallback((program) => {
     setPreselect(program);
+    // Defensive direct scroll as a fallback in case the React state path
+    // is delayed (e.g., heavy re-render). Safe optional chaining means
+    // it's a no-op if the element isn't in the DOM yet.
+    if (typeof window !== "undefined") {
+      setTimeout(() => {
+        const target =
+          document.getElementById("demo-form") ||
+          document.getElementById("demo");
+        target?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 120);
+    }
   }, []);
 
   const handlePreselectConsumed = useCallback(() => {

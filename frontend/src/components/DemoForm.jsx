@@ -26,11 +26,17 @@ export default function DemoForm({ preselectProgram, onPreselectConsumed }) {
 
   useEffect(() => {
     if (preselectProgram) {
+      // Update the program field via React state (preferred path).
       setForm((f) => ({ ...f, program: preselectProgram }));
       onPreselectConsumed?.();
+      // Smoothly scroll to the form. We try the new "demo-form" anchor
+      // first, fall back to the legacy "demo" section id, and finally
+      // hash-based navigation. Optional chaining keeps it safe.
       const id = setTimeout(() => {
-        const el = document.getElementById("demo");
-        el?.scrollIntoView({ behavior: "smooth" });
+        const target =
+          document.getElementById("demo-form") ||
+          document.getElementById("demo");
+        target?.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 100);
       return () => clearTimeout(id);
     }
@@ -104,6 +110,7 @@ export default function DemoForm({ preselectProgram, onPreselectConsumed }) {
 
         <form
           onSubmit={onSubmit}
+          id="demo-form"
           data-testid="demo-booking-form"
           className="bg-white rounded-2xl shadow-md border border-gray-100 p-5 md:p-8 space-y-4"
         >

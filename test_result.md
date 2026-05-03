@@ -101,3 +101,143 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: "Test the PAL Institute landing page for Enquire/Scholarship button flows"
+
+frontend:
+  - task: "Favicon loading"
+    implemented: true
+    working: true
+    file: "/app/frontend/public/index.html"
+    stuck_count: 0
+    priority: "low"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "Favicon loads successfully with 200 status. Link exists in document head and resolves correctly."
+
+  - task: "Course Enquire Now buttons - JEE"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/Courses.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "JEE course enquire button works correctly. Smooth scrolls to form and sets program field to 'JEE (Main + Advanced)'."
+
+  - task: "Course Enquire Now buttons - NEET"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/Courses.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "NEET course enquire button works correctly. Smooth scrolls to form and sets program field to 'NEET (UG)'."
+
+  - task: "Course Enquire Now buttons - Foundation"
+    implemented: true
+    working: false
+    file: "/app/frontend/src/components/Courses.jsx, /app/frontend/src/config/site.js"
+    stuck_count: 1
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: false
+        agent: "testing"
+        comment: "CRITICAL BUG: Foundation course enquire button fails to populate program field. Root cause: Data mismatch between course title 'Foundation (Class 8-9-10)' in COURSES array (site.js line 111) and dropdown option 'Foundation (Class 8-10)' in programsDropdown (site.js line 42). The course title must exactly match a dropdown option. Fix: Change either the course title or the dropdown option to match."
+
+  - task: "Course Enquire Now buttons - Dropper"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/Courses.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "Dropper course enquire button works correctly. Smooth scrolls to form and sets program field to 'Dropper Batch (JEE/NEET)'."
+
+  - task: "Course Enquire Now buttons - Board Crash"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/Courses.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "Board Crash course enquire button works correctly. Smooth scrolls to form and sets program field to 'Board Exam Crash Course'."
+
+  - task: "Scholarship Register button"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/Scholarship.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "Scholarship register button works correctly. Smooth scrolls to form and sets program field to 'Scholarship Test'."
+
+  - task: "Form section IDs"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/DemoForm.jsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "Both #demo (section tag) and #demo-form (form tag) IDs exist in the DOM as required."
+
+  - task: "Console errors check"
+    implemented: true
+    working: true
+    file: "/app/frontend/src"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "Minor: No critical console errors. Backend API calls return 502 errors (/api/health, /api/toppers) but these fail gracefully without breaking UI functionality. Frontend renders and functions correctly despite backend unavailability."
+
+  - task: "Visual integrity"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/pages/Landing.jsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "All key sections (header, courses, demo form, scholarship) render correctly. Layout and styling appear normal. Screenshot captured for reference."
+
+metadata:
+  created_by: "testing_agent"
+  version: "1.0"
+  test_sequence: 1
+  run_ui: true
+
+test_plan:
+  current_focus:
+    - "Course Enquire Now buttons - Foundation"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "testing"
+    message: "Completed comprehensive testing of landing page Enquire/Scholarship button flows. Found 1 critical bug with Foundation course button due to data mismatch. All other features working correctly. Backend APIs returning 502 but frontend handles gracefully."
