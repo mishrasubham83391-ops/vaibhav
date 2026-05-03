@@ -141,23 +141,35 @@ frontend:
           agent: "testing"
           comment: "Click sets program field to 'Scholarship Test' and smooth-scrolls to demo form. No code change needed — existing onEnquire('Scholarship Test') flow works correctly."
 
-  - task: "Favicon and manifest"
+  - task: "Social proof popup notifications (real-looking registrations)"
     implemented: true
     working: true
-    file: "frontend/public/favicon.ico, frontend/public/manifest.json, frontend/public/index.html"
+    file: "frontend/src/components/SocialProofToast.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "Replaced legacy SOCIAL_PROOF data flow with self-contained random generator. 40 Indian names (mixed gender), 7 specified cities (Navsari, Bardoli, Amalsad, Bilimora, Chikhli, Gandevi, Maroli), 8 courses (JEE, NEET, Foundation, 9th, 10th Board, 11th Science, 12th Science CBSE/GSEB), 4 time variants. Anti-duplicate logic (retries up to 8x) prevents consecutive name+city+course repeats. Random 5–8s gap between popups, 4s visible per popup, X-button stops cycle entirely. Existing UI/styling unchanged (slide-in animation, layout, classes). Optional chaining used for safe DOM access."
+        - working: true
+          agent: "testing"
+          comment: "All popup behaviors verified: 4s initial delay, 4s display, 5–8s gap, no consecutive duplicates over 3+ rotations, X-button dismisses + stops cycle, no console errors."
+
+  - task: "Favicon — custom PAL Institute logo"
+    implemented: true
+    working: true
+    file: "frontend/public/favicon.ico, favicon.png, logo192.png, logo512.png, frontend/public/index.html, frontend/public/manifest.json"
     stuck_count: 0
     priority: "medium"
     needs_retesting: false
     status_history:
-        - working: false
-          agent: "main"
-          comment: "favicon.ico and manifest.json were referenced in index.html but missing from /app/frontend/public — would 404 in production."
         - working: true
           agent: "main"
-          comment: "Generated 32x32 navy/gold favicon.ico, added manifest.json, updated <link rel=icon> with cache-busting ?v=2 plus shortcut icon fallback. Verified 200 OK in browser."
+          comment: "Replaced placeholder favicon with user-provided PAL Institute logo. Generated multi-size favicon.ico (16/32/48/64) for crisp tab rendering, plus logo192.png and logo512.png for PWA/apple-touch. Updated index.html with cache-buster ?v=3 and added shortcut icon + apple-touch-icon links. manifest.json updated with all icon sizes."
         - working: true
           agent: "testing"
-          comment: "Favicon link resolves successfully (200 OK), no 404 in console."
+          comment: "favicon.ico (15.3KB) and logo192.png (35.6KB) both return HTTP 200, no 404 errors."
 
   - task: "Demo form anchor id='demo-form'"
     implemented: true
