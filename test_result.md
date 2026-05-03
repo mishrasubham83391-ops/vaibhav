@@ -655,15 +655,21 @@ frontend:
 
   - task: "Toppers carousel - Five toppers (no duplicates, auto-slide)"
     implemented: true
-    working: false
+    working: true
     file: "/app/frontend/src/components/Results.jsx"
-    stuck_count: 1
+    stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: false
         agent: "testing"
         comment: "❌ CRITICAL BUG: With 5 toppers and 4 visible slots (desktop viewport 1920x800), duplicates are appearing. Counts: Alpha=1, Beta=2, Gamma=2, Delta=2, Epsilon=2. Visible cards array shows 9 cards with duplicates: ['Epsilon', 'Delta', 'Gamma', 'Beta', 'Alpha', 'Epsilon', 'Delta', 'Gamma', 'Beta']. ROOT CAUSE: Line 121 in Results.jsx - padding logic `items.concat(items.slice(0, visible))` creates duplicates when items.length (5) > visible (4). This adds first 4 items again, resulting in 9 total cards. CAROUSEL AUTO-SLIDE ALSO BROKEN: Transform stuck at translateX(0%) for 10+ seconds, no movement detected. The carousel should auto-advance every 4 seconds but page state remains at 0."
+      - working: true
+        agent: "main"
+        comment: "Fixed duplicate-topper bug by removing padding logic. Changed line 116 from `items.concat(items.slice(0, visible))` to `const display = items;` so each topper is rendered exactly once. Carousel now works by sliding the visible window across a single flat list with no duplicated nodes. Auto-advance logic preserved at lines 126-134 (runs every 4 seconds when items.length > visible). Transform calculation updated to `translatePct = page * pct` where `pct = 100 / visible`."
+      - working: true
+        agent: "testing"
+        comment: "✅ RE-TEST PASSED: Comprehensive testing with 5 toppers (Alpha, Beta, Gamma, Delta, Epsilon) on desktop viewport 1920x800. ALL CHECKS PASSED: (1) DOM count = EXACTLY 5 cards (no duplicates), (2) Each name appears EXACTLY once in #results innerHTML, (3) Newest-first sorting verified - Epsilon is leftmost at index 0, (4) Auto-slide working - transform cycles between translateX(0%) and translateX(-25%) every 4 seconds, (5) Next/Prev buttons working correctly, (6) Pause on hover working - transform freezes while hovering and resumes after unhover, (7) No critical console errors. The duplicate-topper bug is completely fixed. Each topper now renders exactly once in the DOM, and the carousel slides smoothly across the single flat list."
 
   - task: "Console errors during topper tests"
     implemented: true
@@ -692,18 +698,20 @@ backend:
 
 metadata:
   created_by: "testing_agent"
-  version: "1.3"
-  test_sequence: 5
+  version: "1.4"
+  test_sequence: 6
   run_ui: true
 
 test_plan:
-  current_focus:
-    - "Toppers carousel - Five toppers (no duplicates, auto-slide)"
-  stuck_tasks:
-    - "Toppers carousel - Five toppers (no duplicates, auto-slide)"
+  current_focus: []
+  stuck_tasks: []
   test_all: false
   test_priority: "high_first"
 
 agent_communication:
   - agent: "testing"
     message: "Duplicate-topper fix testing completed. CRITICAL BUG FOUND: When 5 toppers are added with 4 visible slots (desktop viewport), the carousel padding logic in Results.jsx line 121 creates duplicates. The code `items.concat(items.slice(0, visible))` adds the first 4 items again, resulting in 9 cards where Beta/Gamma/Delta/Epsilon each appear TWICE. Additionally, carousel auto-slide is broken - transform stays at translateX(0%) with no movement after 10 seconds. Tests A (1 topper) and B (2 toppers) PASSED with no duplicates. Test C (5 toppers) FAILED. Backend APIs working correctly. Fix needed: Revise padding logic to prevent duplicates when items.length is close to visible count, and debug auto-advance timer."
+  - agent: "main"
+    message: "Fixed duplicate-topper bug by removing padding logic entirely. Changed Results.jsx line 116 from `items.concat(items.slice(0, visible))` to `const display = items;` so each topper renders exactly once. Carousel now slides the visible window across a single flat list with no duplicated DOM nodes. Auto-advance preserved (4s interval), transform calculation updated. Ready for re-test with 5 toppers."
+  - agent: "testing"
+    message: "✅ RE-TEST COMPLETE - ALL CHECKS PASSED! Comprehensive testing with 5 toppers on desktop viewport 1920x800. Results: (1) DOM count = EXACTLY 5 cards (no duplicates), (2) Each name appears EXACTLY once, (3) Newest-first sorting correct (Epsilon leftmost), (4) Auto-slide working (cycles between 0% and -25% every 4s), (5) Next/Prev buttons working, (6) Pause on hover working, (7) No critical console errors. The duplicate-topper bug is completely fixed. Feature is production-ready."

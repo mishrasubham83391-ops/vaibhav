@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { Trophy, Medal, Star, ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -110,35 +110,31 @@ export default function Results() {
     return () => { cancelled = true; };
   }, []);
 
-  // Only pad the tail with a few head-cards when there are MORE items
-  // than visible slots — that's when the translate animation actually
-  // needs wrap-around filler. Otherwise every topper must appear exactly
-  // ONCE (padding would cause duplicate rendering when you add a single
-  // topper on a breakpoint that shows 2/3/4 cards).
-  const display = useMemo(() => {
-    if (!items.length) return [];
-    if (items.length <= visible) return items;
-    return items.concat(items.slice(0, visible));
-  }, [items, visible]);
+  // Render each topper exactly once in the DOM. The carousel works by
+  // sliding the visible window across the single flat list — no padding
+  // or duplicated nodes are ever inserted.
+  const display = items;
 
-  // Reset paging if the list shrinks/changes.
+  // Clamp page into the valid range whenever the list or viewport changes.
+  const maxPage = Math.max(0, items.length - visible);
   useEffect(() => {
-    setPage(0);
-  }, [items.length, visible]);
+    setPage((p) => (p > maxPage ? 0 : p));
+  }, [maxPage]);
 
-  // Auto-advance every 4 seconds (right → left).
+  // Auto-advance every 4 seconds (right → left). Only runs when there is
+  // actually more to show than fits in the viewport.
   useEffect(() => {
     if (!items.length || paused || items.length <= visible) return undefined;
     timerRef.current = setInterval(() => {
-      setPage((p) => (p + 1) % items.length);
+      setPage((p) => (p + 1 > maxPage ? 0 : p + 1));
     }, 4000);
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [items.length, paused, visible]);
+  }, [items.length, paused, visible, maxPage]);
 
-  const next = () => items.length && setPage((p) => (p + 1) % items.length);
-  const prev = () => items.length && setPage((p) => (p - 1 + items.length) % items.length);
+  const next = () => items.length && setPage((p) => (p + 1 > maxPage ? 0 : p + 1));
+  const prev = () => items.length && setPage((p) => (p - 1 < 0 ? maxPage : p - 1));
 
   // Slide width in % is 100/visible; translate is -page * (100/visible).
   const pct = 100 / Math.max(visible, 1);
