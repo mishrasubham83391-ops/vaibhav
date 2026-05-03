@@ -402,3 +402,118 @@ agent_communication:
     message: "Completed comprehensive testing of landing page Enquire/Scholarship button flows. Found 1 critical bug with Foundation course button due to data mismatch. All other features working correctly. Backend APIs returning 502 but frontend handles gracefully."
   - agent: "testing"
     message: "Re-test completed successfully! Foundation course fix verified. All 9 buttons (Foundation, Board Batch 8-10, Board Batch 11-12, Primary Foundation, JEE, NEET, Dropper, Board Crash, Scholarship) now working correctly. Each button clicks successfully, scrolls smoothly to form, and sets the correct program field value. No critical console errors. Visual layout intact. All tests passed! 🎉"
+
+
+user_problem_statement: "Test the PAL Institute landing page popup notifications and favicon"
+
+frontend:
+  - task: "Favicon HTTP 200 verification"
+    implemented: true
+    working: true
+    file: "/app/frontend/public/favicon.ico, /app/frontend/public/logo192.png, /app/frontend/public/index.html"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED: /favicon.ico returns HTTP 200 with size 15.3KB (expected ~15KB, within 14-17KB range). /logo192.png returns HTTP 200 with size 35.6KB (expected ~36KB, within 34-38KB range). Favicon link exists in HTML with cache-busting ?v=3. Both files load successfully without 404 errors."
+
+  - task: "Social proof popup - First appearance timing"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/SocialProofToast.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED: First popup appeared within 4-5 seconds of page load as expected. Located via selector [data-testid='social-proof-toast']."
+
+  - task: "Social proof popup - Content validation"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/SocialProofToast.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED: All 3 observed popups contained valid data. Popup 1: 'Sneha from Maroli just registered for 12th Science (GSEB) 1 minute ago'. Popup 2: 'Nidhi from Amalsad just registered for JEE a few seconds ago'. Popup 3: 'Rachna from Maroli just registered for 10th Board 1 minute ago'. Each popup correctly displays: (1) valid name from expected list, (2) 'from' keyword, (3) valid city, (4) 'just registered for' phrase, (5) valid course, (6) valid time string."
+
+  - task: "Social proof popup - Auto-hide behavior"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/SocialProofToast.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED: Each popup auto-hides after ~4 seconds as expected. Verified for all 3 successive popups. No flickering observed."
+
+  - task: "Social proof popup - No consecutive duplicates"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/SocialProofToast.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED: No consecutive duplicate popups detected. Verified 3 successive popups with different name+city+course combinations: (1) Sneha|Maroli|12th Science (GSEB), (2) Nidhi|Amalsad|JEE, (3) Rachna|Maroli|10th Board. Anti-duplicate logic working correctly."
+
+  - task: "Social proof popup - Timing intervals"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/SocialProofToast.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED: Popup timing intervals correct. First popup appears 4 seconds after page load. Each popup shows for ~4 seconds then hides. Next popup appears 5-8 seconds after previous hides. Observed 3 successive popups over ~30 seconds with correct timing."
+
+  - task: "Social proof popup - Close button functionality"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/SocialProofToast.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED: Close button (X with aria-label='Dismiss') successfully dismisses popup immediately when clicked. After dismissal, no further popups appeared for 15 seconds (verified). Dismiss functionality stops popup cycle entirely as expected."
+
+  - task: "Social proof popup - Console errors check"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/SocialProofToast.jsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED: No critical console errors detected during entire test run. No warnings detected. Clean console output throughout all popup interactions."
+
+metadata:
+  created_by: "testing_agent"
+  version: "1.1"
+  test_sequence: 3
+  run_ui: true
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+  - agent: "testing"
+    message: "Comprehensive testing of social proof popup notifications and favicon completed. All 4 test scenarios PASSED: (1) Favicon and logo files load with HTTP 200 and correct file sizes (15.3KB and 35.6KB), (2) Social proof popups appear at correct intervals with valid data and no consecutive duplicates, (3) Close button dismisses popup and stops further popups, (4) No critical console errors. Feature is production-ready."
