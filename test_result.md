@@ -102,6 +102,106 @@
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
 
+user_problem_statement: |
+  Fix all button functionalities related to course enquiry and scholarship registration across the
+  PAL Institute website. Ensure each "Enquire Now" button auto-selects the correct course in the
+  demo booking form, the "Register for Scholarship Test" button auto-selects "Scholarship Test",
+  smooth scroll to the demo form works on all clicks, and a working favicon is implemented. Make
+  minimal, non-breaking changes — do not alter UI/layout/styling, do not break existing Render
+  backend or Vercel frontend deployment.
+
+frontend:
+  - task: "Course Enquire Now buttons auto-select program & smooth scroll"
+    implemented: true
+    working: true
+    file: "frontend/src/components/Courses.jsx, frontend/src/pages/Landing.jsx, frontend/src/components/DemoForm.jsx, frontend/src/config/site.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: false
+          agent: "testing"
+          comment: "Initial run: Foundation course click left program field empty due to mismatch between course title 'Foundation (Class 8-9-10)' and dropdown option 'Foundation (Class 8-10)'. Same issue suspected for 'Board Batch (Class 8-9-10)'."
+        - working: true
+          agent: "main"
+          comment: "Aligned programsDropdown values in config/site.js to match course titles ('Class 8-9-10' for both Foundation and Board Batch entries). Added data-course attributes on enquire buttons. Added defensive direct scrollIntoView fallback in Landing.handleEnquire that targets new id='demo-form' (with id='demo' fallback)."
+        - working: true
+          agent: "testing"
+          comment: "Re-test: ALL 9 enquire/scholarship buttons pass — JEE, NEET, Foundation (fixed), Board Crash, Dropper, Primary Foundation, Board Batch 8-9-10, Board Batch 11-12, Scholarship Test. Smooth scroll verified, program field auto-populates correctly, no console errors, visual layout intact."
+
+  - task: "Scholarship 'Register for Scholarship Test' button"
+    implemented: true
+    working: true
+    file: "frontend/src/components/Scholarship.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "testing"
+          comment: "Click sets program field to 'Scholarship Test' and smooth-scrolls to demo form. No code change needed — existing onEnquire('Scholarship Test') flow works correctly."
+
+  - task: "Favicon and manifest"
+    implemented: true
+    working: true
+    file: "frontend/public/favicon.ico, frontend/public/manifest.json, frontend/public/index.html"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        - working: false
+          agent: "main"
+          comment: "favicon.ico and manifest.json were referenced in index.html but missing from /app/frontend/public — would 404 in production."
+        - working: true
+          agent: "main"
+          comment: "Generated 32x32 navy/gold favicon.ico, added manifest.json, updated <link rel=icon> with cache-busting ?v=2 plus shortcut icon fallback. Verified 200 OK in browser."
+        - working: true
+          agent: "testing"
+          comment: "Favicon link resolves successfully (200 OK), no 404 in console."
+
+  - task: "Demo form anchor id='demo-form'"
+    implemented: true
+    working: true
+    file: "frontend/src/components/DemoForm.jsx"
+    stuck_count: 0
+    priority: "low"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "Added id='demo-form' to <form> element while keeping section id='demo' intact (used by Header/Hero/Footer #demo links). Both anchors confirmed in DOM."
+
+backend:
+  - task: "Existing API endpoints (no changes)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "low"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "Backend untouched per user instructions (Render deploy is live). /api/bookings, /api/scholarship, /api/health endpoints unchanged."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.1"
+  test_sequence: 2
+  run_ui: true
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    - agent: "main"
+      message: "Minimal, non-breaking fixes applied: (1) aligned 2 dropdown program labels to match course titles to fix silent auto-select failure, (2) added id='demo-form' to form element + defensive scroll fallback, (3) added data-course attributes on enquire buttons, (4) created favicon.ico + manifest.json with cache-buster. No UI/layout/CSS/backend changes."
+    - agent: "testing"
+      message: "All 9 enquire/scholarship button flows pass after fix. Favicon loads. Both #demo and #demo-form anchors present. Visual layout intact, no console errors. Ready to finish."
+
 user_problem_statement: "Test the PAL Institute landing page for Enquire/Scholarship button flows"
 
 frontend:
