@@ -502,7 +502,15 @@ app.include_router(api_router)
 # this is spec-compliant and does not break browser auth flows.
 # ------------------------------------------------------------------
 _cors = os.getenv("CORS_ORIGINS", "*").strip()
-allowed_origins = ["*"] if _cors == "*" else [o.strip() for o in _cors.split(",") if o.strip()]
+# When CORS_ORIGINS is "*" (or unset) we deliberately leave the explicit
+# allow_origins list EMPTY and rely on the regex below. This is required
+# because Starlette suppresses the `Access-Control-Allow-Credentials`
+# header whenever the literal string "*" is present in `allow_origins`.
+# The regex still matches every legitimate deployment surface.
+if _cors == "*" or not _cors:
+    allowed_origins: list[str] = []
+else:
+    allowed_origins = [o.strip() for o in _cors.split(",") if o.strip()]
 
 # Regex fallback for production deployments. Matches:
 #   • http(s)://localhost or 127.0.0.1 (any port) — local dev

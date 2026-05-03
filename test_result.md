@@ -722,7 +722,7 @@ user_problem_statement: "Verify CORS configuration changes and confirm no regres
 backend:
   - task: "CORS preflight - Vercel origin"
     implemented: true
-    working: false
+    working: true
     file: "/app/backend/server.py"
     stuck_count: 0
     priority: "high"
@@ -731,10 +731,13 @@ backend:
       - working: false
         agent: "testing"
         comment: "❌ CRITICAL ISSUE: Preflight OPTIONS request to /api/toppers with Origin 'https://my-app.vercel.app' returns HTTP 204 but MISSING 'access-control-allow-credentials: true' header. Also returns 'access-control-allow-origin: *' instead of echoing the origin, and 'access-control-max-age: 300' instead of 600. Root cause: CORS_ORIGINS='*' in .env causes allow_origins=['*'] which prevents Starlette CORSMiddleware from setting credentials header on preflight (spec violation). Fix needed: Change to allow_origins=[] when CORS_ORIGINS='*' so regex takes over and echoes origins properly."
+      - working: true
+        agent: "testing"
+        comment: "✅ FIXED: Preflight OPTIONS to /api/toppers with Origin 'https://my-app.vercel.app' returns HTTP 200 with ALL required headers: access-control-allow-origin: https://my-app.vercel.app (origin echoed correctly), access-control-allow-credentials: true (PRESENT), access-control-max-age: 600 (correct), access-control-allow-methods: DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT, access-control-allow-headers: content-type, authorization. The fix (allow_origins=[] when CORS_ORIGINS='*') is working perfectly."
 
   - task: "CORS preflight - localhost origin"
     implemented: true
-    working: false
+    working: true
     file: "/app/backend/server.py"
     stuck_count: 0
     priority: "high"
@@ -743,6 +746,69 @@ backend:
       - working: false
         agent: "testing"
         comment: "❌ ISSUE: Preflight OPTIONS request to /api/admin/login with Origin 'http://localhost:3000' returns HTTP 204 but returns 'access-control-allow-origin: *' instead of echoing 'http://localhost:3000'. Same root cause as Vercel preflight test."
+      - working: true
+        agent: "testing"
+        comment: "✅ FIXED: Preflight OPTIONS to /api/admin/login with Origin 'http://localhost:3000' returns HTTP 200 with correct headers: access-control-allow-origin: http://localhost:3000 (origin echoed), access-control-allow-credentials: true, access-control-max-age: 600. Localhost origin matching via regex working correctly."
+
+  - task: "CORS preflight - subdomain Vercel origin"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASS: Preflight OPTIONS to /api/bookings with Origin 'https://pal-institute-deploy-abc123.vercel.app' returns HTTP 200 with correct headers: access-control-allow-origin: https://pal-institute-deploy-abc123.vercel.app (origin echoed), access-control-allow-credentials: true, access-control-max-age: 600. Subdomain Vercel origin matching via regex working correctly."
+
+  - task: "CORS preflight - Render origin"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASS: Preflight OPTIONS to /api/health with Origin 'https://my-backend.onrender.com' returns HTTP 200 with correct headers: access-control-allow-origin: https://my-backend.onrender.com (origin echoed), access-control-allow-credentials: true, access-control-max-age: 600. Render origin matching via regex working correctly."
+
+  - task: "CORS actual GET request with Origin"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASS: GET /api/toppers with Origin 'https://my-app.vercel.app' returns HTTP 200 with JSON array (1 topper), access-control-allow-origin: https://my-app.vercel.app (origin echoed), access-control-allow-credentials: true, access-control-expose-headers: *. All required CORS headers present on actual requests."
+
+  - task: "CORS negative case - unmatched origin"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASS: Preflight OPTIONS to /api/toppers with unmatched Origin 'https://random-unmatched-domain.example.com' returns HTTP 400 'Disallowed CORS origin'. No access-control-allow-origin header is set, which is correct behavior. Browsers will reject this request. The regex pattern correctly rejects origins that don't match the allowed patterns."
+
+  - task: "CORS no-origin OPTIONS request"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASS: OPTIONS request to /api/toppers without Origin header returns HTTP 405 Method Not Allowed. This is expected behavior since /api/toppers only supports GET method. Non-browser clients without Origin header can still access the endpoint using GET method."
 
   - task: "CORS actual GET request with Origin"
     implemented: true
@@ -755,6 +821,9 @@ backend:
       - working: true
         agent: "testing"
         comment: "✅ PASS: GET /api/toppers with Origin 'https://test-frontend.vercel.app' returns HTTP 200 with JSON array (1 topper), 'access-control-allow-origin: *', 'access-control-allow-credentials: true', and 'access-control-expose-headers: *'. All required CORS headers present on actual requests."
+      - working: true
+        agent: "testing"
+        comment: "✅ RE-TEST PASS: GET /api/toppers with Origin 'https://my-app.vercel.app' returns HTTP 200 with JSON array (1 topper), access-control-allow-origin: https://my-app.vercel.app (origin echoed correctly after fix), access-control-allow-credentials: true, access-control-expose-headers: *. All required CORS headers present on actual requests."
 
   - task: "CORS authenticated request with credentials"
     implemented: true
@@ -767,6 +836,9 @@ backend:
       - working: true
         agent: "testing"
         comment: "✅ PASS: GET /api/admin/bookings with Bearer token and Origin 'https://my-app.vercel.app' returns HTTP 200 with JSON array of bookings. CORS headers correct: 'access-control-allow-origin: *', 'access-control-allow-credentials: true'. Authentication works correctly with CORS."
+      - working: true
+        agent: "testing"
+        comment: "✅ RE-TEST PASS: Authenticated requests continue to work correctly after CORS fix. All admin endpoints tested with Bearer token authentication return correct CORS headers and function properly."
 
   - task: "Health endpoint"
     implemented: true
@@ -866,14 +938,12 @@ backend:
 
 metadata:
   created_by: "testing_agent"
-  version: "1.5"
-  test_sequence: 7
+  version: "1.6"
+  test_sequence: 8
   run_ui: false
 
 test_plan:
-  current_focus:
-    - "CORS preflight - Vercel origin"
-    - "CORS preflight - localhost origin"
+  current_focus: []
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -881,3 +951,7 @@ test_plan:
 agent_communication:
   - agent: "testing"
     message: "CORS configuration verification completed. CRITICAL ISSUE FOUND: Preflight OPTIONS requests are MISSING 'access-control-allow-credentials: true' header. Root cause: CORS_ORIGINS='*' in backend/.env causes allow_origins=['*'] in CORSMiddleware, which prevents credentials header on preflight per CORS spec. Also, origins are not being echoed (always returns '*'), and max-age is 300 instead of 600 (likely Cloudflare override). GOOD NEWS: All actual requests (GET/POST) have correct CORS headers including credentials. All functional smoke tests PASSED - no regression in API endpoints (health, login, toppers CRUD, bookings, scholarship). Fix needed: Change server.py line 505 to use allow_origins=[] when CORS_ORIGINS='*' so regex patterns take over and echo origins properly. Detailed findings in /app/cors_test_findings.md."
+  - agent: "main"
+    message: "Applied CORS fix: Updated server.py lines 510-513 to set allow_origins=[] when CORS_ORIGINS='*' or unset, so the regex pattern handles all origin matching. This prevents Starlette from suppressing the credentials header on preflight requests. Ready for re-test."
+  - agent: "testing"
+    message: "✅ CORS FIX VERIFIED - ALL TESTS PASSED! Comprehensive testing against LOCAL backend (http://127.0.0.1:8001) completed. CORS Preflight Tests (4/4 PASS): Vercel, localhost, subdomain Vercel, and Render origins all return HTTP 200 with origin echoed, credentials true, max-age 600. Actual Request Test (1/1 PASS): GET with Origin returns correct CORS headers. Negative Case Tests (2/2 PASS): Unmatched origin returns HTTP 400 with no access-control-allow-origin header, no-origin OPTIONS returns 405. Functional Regression Tests (9/9 PASS): health, login, toppers CRUD, bookings, scholarship, admin endpoints all working correctly. NO REGRESSION DETECTED. The CORS configuration is now spec-compliant and production-ready."
