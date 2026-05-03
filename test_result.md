@@ -128,6 +128,9 @@ frontend:
       - working: true
         agent: "testing"
         comment: "JEE course enquire button works correctly. Smooth scrolls to form and sets program field to 'JEE (Main + Advanced)'."
+      - working: true
+        agent: "testing"
+        comment: "Re-tested and confirmed still working after Foundation fix."
 
   - task: "Course Enquire Now buttons - NEET"
     implemented: true
@@ -140,18 +143,24 @@ frontend:
       - working: true
         agent: "testing"
         comment: "NEET course enquire button works correctly. Smooth scrolls to form and sets program field to 'NEET (UG)'."
+      - working: true
+        agent: "testing"
+        comment: "Re-tested and confirmed still working after Foundation fix."
 
   - task: "Course Enquire Now buttons - Foundation"
     implemented: true
-    working: false
+    working: true
     file: "/app/frontend/src/components/Courses.jsx, /app/frontend/src/config/site.js"
-    stuck_count: 1
+    stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: false
         agent: "testing"
         comment: "CRITICAL BUG: Foundation course enquire button fails to populate program field. Root cause: Data mismatch between course title 'Foundation (Class 8-9-10)' in COURSES array (site.js line 111) and dropdown option 'Foundation (Class 8-10)' in programsDropdown (site.js line 42). The course title must exactly match a dropdown option. Fix: Change either the course title or the dropdown option to match."
+      - working: true
+        agent: "testing"
+        comment: "✅ FIXED: Foundation course button now works correctly. Clicks successfully, scrolls smoothly to form, and sets program field to 'Foundation (Class 8-9-10)'. The data mismatch has been resolved."
 
   - task: "Course Enquire Now buttons - Dropper"
     implemented: true
@@ -164,6 +173,9 @@ frontend:
       - working: true
         agent: "testing"
         comment: "Dropper course enquire button works correctly. Smooth scrolls to form and sets program field to 'Dropper Batch (JEE/NEET)'."
+      - working: true
+        agent: "testing"
+        comment: "Re-tested and confirmed still working after Foundation fix."
 
   - task: "Course Enquire Now buttons - Board Crash"
     implemented: true
@@ -176,6 +188,45 @@ frontend:
       - working: true
         agent: "testing"
         comment: "Board Crash course enquire button works correctly. Smooth scrolls to form and sets program field to 'Board Exam Crash Course'."
+      - working: true
+        agent: "testing"
+        comment: "Re-tested and confirmed still working after Foundation fix."
+
+  - task: "Course Enquire Now buttons - Primary Foundation"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/Courses.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "Primary Foundation (Class 1-7) enquire button works correctly. Clicks successfully, scrolls smoothly to form, and sets program field to 'Primary Foundation (Class 1-7)'."
+
+  - task: "Course Enquire Now buttons - Board Batch (Class 8-9-10)"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/Courses.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "Board Batch (Class 8-9-10) enquire button works correctly. Clicks successfully, scrolls smoothly to form, and sets program field to 'Board Batch (Class 8-9-10)'."
+
+  - task: "Course Enquire Now buttons - Board Batch (Class 11-12)"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/Courses.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "Board Batch (Class 11-12) enquire button works correctly. Clicks successfully, scrolls smoothly to form, and sets program field to 'Board Batch (Class 11-12)'."
 
   - task: "Scholarship Register button"
     implemented: true
@@ -188,6 +239,9 @@ frontend:
       - working: true
         agent: "testing"
         comment: "Scholarship register button works correctly. Smooth scrolls to form and sets program field to 'Scholarship Test'."
+      - working: true
+        agent: "testing"
+        comment: "Re-tested and confirmed still working after Foundation fix."
 
   - task: "Form section IDs"
     implemented: true
@@ -212,6 +266,9 @@ frontend:
       - working: true
         agent: "testing"
         comment: "Minor: No critical console errors. Backend API calls return 502 errors (/api/health, /api/toppers) but these fail gracefully without breaking UI functionality. Frontend renders and functions correctly despite backend unavailability."
+      - working: true
+        agent: "testing"
+        comment: "Re-tested: No critical console errors detected. Backend 502 errors still present but handled gracefully as expected."
 
   - task: "Visual integrity"
     implemented: true
@@ -224,16 +281,18 @@ frontend:
       - working: true
         agent: "testing"
         comment: "All key sections (header, courses, demo form, scholarship) render correctly. Layout and styling appear normal. Screenshot captured for reference."
+      - working: true
+        agent: "testing"
+        comment: "Re-tested: All key sections (header, courses, demo form, scholarship) render correctly. Visual layout intact after Foundation fix."
 
 metadata:
   created_by: "testing_agent"
   version: "1.0"
-  test_sequence: 1
+  test_sequence: 2
   run_ui: true
 
 test_plan:
-  current_focus:
-    - "Course Enquire Now buttons - Foundation"
+  current_focus: []
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -241,3 +300,5 @@ test_plan:
 agent_communication:
   - agent: "testing"
     message: "Completed comprehensive testing of landing page Enquire/Scholarship button flows. Found 1 critical bug with Foundation course button due to data mismatch. All other features working correctly. Backend APIs returning 502 but frontend handles gracefully."
+  - agent: "testing"
+    message: "Re-test completed successfully! Foundation course fix verified. All 9 buttons (Foundation, Board Batch 8-10, Board Batch 11-12, Primary Foundation, JEE, NEET, Dropper, Board Crash, Scholarship) now working correctly. Each button clicks successfully, scrolls smoothly to form, and sets the correct program field value. No critical console errors. Visual layout intact. All tests passed! 🎉"

@@ -39,10 +39,10 @@ export const SITE = {
   programsDropdown: [
     "JEE (Main + Advanced)",
     "NEET (UG)",
-    "Foundation (Class 8-10)",
+    "Foundation (Class 8-9-10)",
     "Primary Foundation (Class 1-7)",
     "Board Exam Crash Course",
-    "Board Batch (Class 8-10)",
+    "Board Batch (Class 8-9-10)",
     "Board Batch (Class 11-12)",
     "Dropper Batch (JEE/NEET)",
     "Scholarship Test",
