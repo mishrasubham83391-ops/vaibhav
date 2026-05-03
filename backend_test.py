@@ -1,11 +1,16 @@
+#!/usr/bin/env python3
 """
-Backend API smoke tests for toppers endpoints.
-Tests admin login, topper CRUD operations, and sorting.
+CORS Configuration Verification Test Suite
+Tests CORS headers and functional endpoints for PAL Institute API
+Backend URL: https://enq-scholar-setup.preview.emergentagent.com
 """
-import requests
-import sys
 
-# Backend URL from environment
+import requests
+import json
+import sys
+from typing import Dict, Any, Optional
+
+# Backend URL
 BASE_URL = "https://enq-scholar-setup.preview.emergentagent.com/api"
 ADMIN_PASSWORD = "admin123"
 
@@ -13,28 +18,206 @@ ADMIN_PASSWORD = "admin123"
 test_results = []
 
 
-def log_test(step, passed, message):
-    """Log test result."""
+def log_test(test_name: str, passed: bool, details: str = ""):
+    """Log test result"""
     status = "✅ PASS" if passed else "❌ FAIL"
-    result = f"{status} - Step {step}: {message}"
+    result = f"{status}: {test_name}"
+    if details:
+        result += f"\n    {details}"
     print(result)
-    test_results.append({"step": step, "passed": passed, "message": message})
-    return passed
+    test_results.append({"test": test_name, "passed": passed, "details": details})
 
 
-def test_toppers_api():
-    """Run all topper API tests."""
-    print("\n" + "=" * 70)
-    print("TOPPERS API SMOKE TEST")
-    print("=" * 70 + "\n")
+def check_cors_headers(response: requests.Response, expected_origin: str, test_name: str) -> bool:
+    """Verify CORS headers in response"""
+    headers = {k.lower(): v for k, v in response.headers.items()}
     
+    issues = []
+    
+    # Check allow-origin header
+    allow_origin = headers.get("access-control-allow-origin")
+    if not allow_origin:
+        issues.append("Missing access-control-allow-origin header")
+    elif allow_origin != expected_origin and allow_origin != "*":
+        issues.append(f"Expected origin '{expected_origin}' but got '{allow_origin}'")
+    
+    # Check allow-credentials header
+    allow_creds = headers.get("access-control-allow-credentials")
+    if allow_creds != "true":
+        issues.append(f"Expected allow-credentials: true, got: {allow_creds}")
+    
+    if issues:
+        log_test(test_name, False, "; ".join(issues))
+        return False
+    else:
+        log_test(test_name, True, f"Origin: {allow_origin}, Credentials: {allow_creds}")
+        return True
+
+
+def test_preflight_vercel():
+    """Test 1: Preflight from Vercel-style origin"""
+    print("\n=== Test 1: Preflight from Vercel-style origin ===")
+    
+    origin = "https://my-app.vercel.app"
+    headers = {
+        "Origin": origin,
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type, authorization"
+    }
+    
+    try:
+        response = requests.options(f"{BASE_URL}/toppers", headers=headers, timeout=10)
+        
+        # Check status code (200 or 204 are both valid for OPTIONS)
+        if response.status_code not in [200, 204]:
+            log_test("Preflight Vercel - Status Code", False, f"Expected 200 or 204, got {response.status_code}")
+            return False
+        else:
+            log_test("Preflight Vercel - Status Code", True, f"{response.status_code} OK")
+        
+        # Check CORS headers
+        resp_headers = {k.lower(): v for k, v in response.headers.items()}
+        
+        # Check allow-origin
+        allow_origin = resp_headers.get("access-control-allow-origin")
+        if allow_origin == origin:
+            log_test("Preflight Vercel - Allow Origin", True, f"Echoed: {origin}")
+        else:
+            log_test("Preflight Vercel - Allow Origin", False, f"Expected {origin}, got {allow_origin}")
+        
+        # Check allow-credentials
+        allow_creds = resp_headers.get("access-control-allow-credentials")
+        if allow_creds == "true":
+            log_test("Preflight Vercel - Allow Credentials", True, "true")
+        else:
+            log_test("Preflight Vercel - Allow Credentials", False, f"Expected true, got {allow_creds}")
+        
+        # Check allow-methods
+        allow_methods = resp_headers.get("access-control-allow-methods", "")
+        if "POST" in allow_methods:
+            log_test("Preflight Vercel - Allow Methods", True, f"Includes POST: {allow_methods}")
+        else:
+            log_test("Preflight Vercel - Allow Methods", False, f"POST not in: {allow_methods}")
+        
+        # Check allow-headers
+        allow_headers = resp_headers.get("access-control-allow-headers", "").lower()
+        if "content-type" in allow_headers and "authorization" in allow_headers:
+            log_test("Preflight Vercel - Allow Headers", True, f"Includes content-type and authorization")
+        else:
+            log_test("Preflight Vercel - Allow Headers", False, f"Missing required headers: {allow_headers}")
+        
+        # Check max-age
+        max_age = resp_headers.get("access-control-max-age")
+        if max_age == "600":
+            log_test("Preflight Vercel - Max Age", True, "600")
+        else:
+            log_test("Preflight Vercel - Max Age", False, f"Expected 600, got {max_age}")
+        
+        return True
+        
+    except Exception as e:
+        log_test("Preflight Vercel - Request", False, f"Exception: {str(e)}")
+        return False
+
+
+def test_preflight_localhost():
+    """Test 2: Preflight from localhost origin"""
+    print("\n=== Test 2: Preflight from localhost origin ===")
+    
+    origin = "http://localhost:3000"
+    headers = {
+        "Origin": origin,
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type"
+    }
+    
+    try:
+        response = requests.options(f"{BASE_URL}/admin/login", headers=headers, timeout=10)
+        
+        # Check status code (200 or 204 are both valid for OPTIONS)
+        if response.status_code not in [200, 204]:
+            log_test("Preflight Localhost - Status Code", False, f"Expected 200 or 204, got {response.status_code}")
+            return False
+        else:
+            log_test("Preflight Localhost - Status Code", True, f"{response.status_code} OK")
+        
+        # Check allow-origin
+        resp_headers = {k.lower(): v for k, v in response.headers.items()}
+        allow_origin = resp_headers.get("access-control-allow-origin")
+        if allow_origin == origin:
+            log_test("Preflight Localhost - Allow Origin", True, f"Echoed: {origin}")
+        else:
+            log_test("Preflight Localhost - Allow Origin", False, f"Expected {origin}, got {allow_origin}")
+        
+        return True
+        
+    except Exception as e:
+        log_test("Preflight Localhost - Request", False, f"Exception: {str(e)}")
+        return False
+
+
+def test_actual_get_with_origin():
+    """Test 3: Actual GET request with Origin header"""
+    print("\n=== Test 3: Actual GET request with Origin header ===")
+    
+    origin = "https://test-frontend.vercel.app"
+    headers = {"Origin": origin}
+    
+    try:
+        response = requests.get(f"{BASE_URL}/toppers", headers=headers, timeout=10)
+        
+        # Check status code
+        if response.status_code != 200:
+            log_test("GET with Origin - Status Code", False, f"Expected 200, got {response.status_code}")
+            return False
+        else:
+            log_test("GET with Origin - Status Code", True, "200 OK")
+        
+        # Check JSON body
+        try:
+            data = response.json()
+            if isinstance(data, list):
+                log_test("GET with Origin - JSON Body", True, f"Array with {len(data)} items")
+            else:
+                log_test("GET with Origin - JSON Body", False, f"Expected array, got {type(data)}")
+        except Exception as e:
+            log_test("GET with Origin - JSON Body", False, f"Invalid JSON: {str(e)}")
+        
+        # Check CORS headers
+        resp_headers = {k.lower(): v for k, v in response.headers.items()}
+        allow_origin = resp_headers.get("access-control-allow-origin")
+        if allow_origin == origin or allow_origin == "*":
+            log_test("GET with Origin - Allow Origin", True, f"Header present: {allow_origin}")
+        else:
+            log_test("GET with Origin - Allow Origin", False, f"Expected {origin} or *, got {allow_origin}")
+        
+        return True
+        
+    except Exception as e:
+        log_test("GET with Origin - Request", False, f"Exception: {str(e)}")
+        return False
+
+
+def test_functional_smoke():
+    """Test 4: Functional smoke test (no regression)"""
+    print("\n=== Test 4: Functional smoke test ===")
+    
+    # 4a. GET /api/health
+    try:
+        response = requests.get(f"{BASE_URL}/health", timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("status") == "ok":
+                log_test("Smoke Test - Health Endpoint", True, f"Status: {data.get('status')}")
+            else:
+                log_test("Smoke Test - Health Endpoint", False, f"Unexpected status: {data}")
+        else:
+            log_test("Smoke Test - Health Endpoint", False, f"Status code: {response.status_code}")
+    except Exception as e:
+        log_test("Smoke Test - Health Endpoint", False, f"Exception: {str(e)}")
+    
+    # 4b. POST /api/admin/login
     token = None
-    created_id = None
-    photo_id = None
-    initial_count = 0
-    
-    # Step 1: Admin login
-    print("\n[Step 1] Testing POST /api/admin/login")
     try:
         response = requests.post(
             f"{BASE_URL}/admin/login",
@@ -43,258 +226,252 @@ def test_toppers_api():
         )
         if response.status_code == 200:
             data = response.json()
-            if "token" in data:
-                token = data["token"]
-                log_test(1, True, f"Admin login successful, token received (length: {len(token)})")
+            token = data.get("token")
+            if token:
+                log_test("Smoke Test - Admin Login", True, f"Token received (length: {len(token)})")
             else:
-                log_test(1, False, "Admin login returned 200 but no token field in response")
-                return False
+                log_test("Smoke Test - Admin Login", False, "No token in response")
         else:
-            log_test(1, False, f"Admin login failed with status {response.status_code}: {response.text}")
-            return False
+            log_test("Smoke Test - Admin Login", False, f"Status code: {response.status_code}")
     except Exception as e:
-        log_test(1, False, f"Admin login request failed: {str(e)}")
+        log_test("Smoke Test - Admin Login", False, f"Exception: {str(e)}")
         return False
     
-    # Step 2: Get initial toppers count (public endpoint)
-    print("\n[Step 2] Testing GET /api/toppers (public, no auth)")
+    if not token:
+        print("    ⚠️  Cannot continue smoke tests without admin token")
+        return False
+    
+    # 4c. GET /api/toppers
     try:
         response = requests.get(f"{BASE_URL}/toppers", timeout=10)
         if response.status_code == 200:
-            toppers = response.json()
-            if isinstance(toppers, list):
-                initial_count = len(toppers)
-                log_test(2, True, f"Public toppers endpoint returned {initial_count} toppers")
+            data = response.json()
+            if isinstance(data, list):
+                log_test("Smoke Test - Get Toppers", True, f"Array with {len(data)} items")
             else:
-                log_test(2, False, f"Expected array but got: {type(toppers)}")
-                return False
+                log_test("Smoke Test - Get Toppers", False, f"Expected array, got {type(data)}")
         else:
-            log_test(2, False, f"GET /api/toppers failed with status {response.status_code}: {response.text}")
-            return False
+            log_test("Smoke Test - Get Toppers", False, f"Status code: {response.status_code}")
     except Exception as e:
-        log_test(2, False, f"GET /api/toppers request failed: {str(e)}")
-        return False
+        log_test("Smoke Test - Get Toppers", False, f"Exception: {str(e)}")
     
-    # Step 3: Create topper without photo
-    print("\n[Step 3] Testing POST /api/admin/toppers (create topper)")
+    # 4d. POST /api/admin/toppers (create)
+    topper_id = None
     try:
         response = requests.post(
             f"{BASE_URL}/admin/toppers",
-            headers={"Authorization": f"Bearer {token}"},
             json={
-                "name": "Test Student",
+                "name": "CORS Test Student",
+                "photo": "",
                 "exam": "JEE Advanced",
-                "rank": "AIR 100",
-                "year": "2025",
-                "photo": ""
+                "rank": "AIR 1",
+                "year": "2025"
             },
+            headers={"Authorization": f"Bearer {token}"},
             timeout=10
         )
         if response.status_code == 200:
             data = response.json()
-            if "id" in data:
-                created_id = data["id"]
-                log_test(3, True, f"Topper created successfully with id: {created_id}")
+            topper_id = data.get("id")
+            if topper_id:
+                log_test("Smoke Test - Create Topper", True, f"Created with ID: {topper_id}")
             else:
-                log_test(3, False, "Create topper returned 200 but no id field in response")
-                return False
+                log_test("Smoke Test - Create Topper", False, "No ID in response")
         else:
-            log_test(3, False, f"Create topper failed with status {response.status_code}: {response.text}")
-            return False
+            log_test("Smoke Test - Create Topper", False, f"Status code: {response.status_code}")
     except Exception as e:
-        log_test(3, False, f"Create topper request failed: {str(e)}")
-        return False
+        log_test("Smoke Test - Create Topper", False, f"Exception: {str(e)}")
     
-    # Step 4: Verify count increased and sorting (newest first)
-    print("\n[Step 4] Testing GET /api/toppers (verify count N+1 and sorting)")
-    try:
-        response = requests.get(f"{BASE_URL}/toppers", timeout=10)
-        if response.status_code == 200:
-            toppers = response.json()
-            new_count = len(toppers)
-            
-            # Check count
-            if new_count != initial_count + 1:
-                log_test(4, False, f"Expected {initial_count + 1} toppers but got {new_count}")
-                return False
-            
-            # Check if newly created topper is first (sorted by created_at DESC)
-            if len(toppers) > 0:
-                first_topper = toppers[0]
-                if first_topper.get("id") == created_id:
-                    log_test(4, True, f"Count increased to {new_count} and newest topper appears FIRST (correct sorting)")
-                else:
-                    log_test(4, False, f"Count is correct ({new_count}) but newest topper is NOT first. First topper id: {first_topper.get('id')}, expected: {created_id}")
-                    return False
+    # 4e. DELETE /api/admin/toppers/{id} (cleanup)
+    if topper_id:
+        try:
+            response = requests.delete(
+                f"{BASE_URL}/admin/toppers/{topper_id}",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=10
+            )
+            if response.status_code == 200:
+                log_test("Smoke Test - Delete Topper", True, "Cleanup successful")
             else:
-                log_test(4, False, "Toppers array is empty after creation")
-                return False
-        else:
-            log_test(4, False, f"GET /api/toppers failed with status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test(4, False, f"GET /api/toppers request failed: {str(e)}")
-        return False
+                log_test("Smoke Test - Delete Topper", False, f"Status code: {response.status_code}")
+        except Exception as e:
+            log_test("Smoke Test - Delete Topper", False, f"Exception: {str(e)}")
     
-    # Step 5: Create topper with photo (base64 data URL)
-    print("\n[Step 5] Testing POST /api/admin/toppers (with photo)")
+    # 4f. POST /api/bookings
     try:
-        photo_data = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD3+iiigD//2Q=="
         response = requests.post(
-            f"{BASE_URL}/admin/toppers",
-            headers={"Authorization": f"Bearer {token}"},
+            f"{BASE_URL}/bookings",
             json={
-                "name": "Test With Photo",
-                "exam": "NEET",
-                "rank": "99.1%",
-                "year": "2025",
-                "photo": photo_data
+                "student_name": "Rajesh Kumar",
+                "parent_name": "Suresh Kumar",
+                "phone": "9876543210",
+                "email": "rajesh@example.com",
+                "student_class": "11th",
+                "program": "JEE (Main + Advanced)",
+                "preferred_date": "2025-12-15",
+                "preferred_timing": "Morning (9 AM - 12 PM)",
+                "source": "Website",
+                "questions": "",
+                "consent": True
             },
             timeout=10
         )
         if response.status_code == 200:
             data = response.json()
-            if "id" in data:
-                photo_id = data["id"]
-                log_test(5, True, f"Topper with photo created successfully with id: {photo_id}")
+            if data.get("success"):
+                log_test("Smoke Test - Create Booking", True, f"Booking ID: {data.get('id')}")
             else:
-                log_test(5, False, "Create topper with photo returned 200 but no id field")
-                return False
+                log_test("Smoke Test - Create Booking", False, "Success flag not true")
         else:
-            log_test(5, False, f"Create topper with photo failed with status {response.status_code}: {response.text}")
-            return False
+            log_test("Smoke Test - Create Booking", False, f"Status code: {response.status_code}")
     except Exception as e:
-        log_test(5, False, f"Create topper with photo request failed: {str(e)}")
-        return False
+        log_test("Smoke Test - Create Booking", False, f"Exception: {str(e)}")
     
-    # Step 6: Delete first topper (without photo)
-    print(f"\n[Step 6] Testing DELETE /api/admin/toppers/{created_id}")
+    # 4g. POST /api/scholarship
     try:
-        response = requests.delete(
-            f"{BASE_URL}/admin/toppers/{created_id}",
-            headers={"Authorization": f"Bearer {token}"},
+        response = requests.post(
+            f"{BASE_URL}/scholarship",
+            json={
+                "student_name": "Priya Patel",
+                "parent_name": "Ramesh Patel",
+                "phone": "9876543211",
+                "email": "priya@example.com",
+                "student_class": "10th",
+                "program": "Scholarship Test",
+                "consent": True
+            },
             timeout=10
         )
         if response.status_code == 200:
-            log_test(6, True, f"Topper {created_id} deleted successfully")
-        else:
-            log_test(6, False, f"Delete topper failed with status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test(6, False, f"Delete topper request failed: {str(e)}")
-        return False
-    
-    # Step 7: Verify count is N+1 (photo topper still there)
-    print("\n[Step 7] Testing GET /api/toppers (verify count is N+1)")
-    try:
-        response = requests.get(f"{BASE_URL}/toppers", timeout=10)
-        if response.status_code == 200:
-            toppers = response.json()
-            current_count = len(toppers)
-            expected_count = initial_count + 1  # One deleted, one with photo remains
-            
-            if current_count == expected_count:
-                log_test(7, True, f"Count is {current_count} (N+1) as expected after deleting first topper")
+            data = response.json()
+            if data.get("success"):
+                log_test("Smoke Test - Create Scholarship", True, f"Scholarship ID: {data.get('id')}")
             else:
-                log_test(7, False, f"Expected count {expected_count} but got {current_count}")
-                return False
+                log_test("Smoke Test - Create Scholarship", False, "Success flag not true")
         else:
-            log_test(7, False, f"GET /api/toppers failed with status {response.status_code}: {response.text}")
-            return False
+            log_test("Smoke Test - Create Scholarship", False, f"Status code: {response.status_code}")
     except Exception as e:
-        log_test(7, False, f"GET /api/toppers request failed: {str(e)}")
-        return False
-    
-    # Step 8: Cleanup - delete photo topper
-    print(f"\n[Step 8] Testing DELETE /api/admin/toppers/{photo_id} (cleanup)")
-    try:
-        response = requests.delete(
-            f"{BASE_URL}/admin/toppers/{photo_id}",
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=10
-        )
-        if response.status_code == 200:
-            log_test(8, True, f"Photo topper {photo_id} deleted successfully (cleanup)")
-        else:
-            log_test(8, False, f"Delete photo topper failed with status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test(8, False, f"Delete photo topper request failed: {str(e)}")
-        return False
-    
-    # Step 9: Verify count restored to N
-    print("\n[Step 9] Testing GET /api/toppers (verify count restored to N)")
-    try:
-        response = requests.get(f"{BASE_URL}/toppers", timeout=10)
-        if response.status_code == 200:
-            toppers = response.json()
-            final_count = len(toppers)
-            
-            if final_count == initial_count:
-                log_test(9, True, f"Count restored to original {initial_count} after cleanup")
-            else:
-                log_test(9, False, f"Expected count {initial_count} but got {final_count}")
-                return False
-        else:
-            log_test(9, False, f"GET /api/toppers failed with status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test(9, False, f"GET /api/toppers request failed: {str(e)}")
-        return False
-    
-    # Bonus: Verify public endpoint works without auth
-    print("\n[Bonus] Verifying GET /api/toppers is public (no auth required)")
-    try:
-        response = requests.get(f"{BASE_URL}/toppers", timeout=10)
-        if response.status_code == 200:
-            log_test("Bonus", True, "Public endpoint /api/toppers works without authentication")
-        else:
-            log_test("Bonus", False, f"Public endpoint failed with status {response.status_code}")
-    except Exception as e:
-        log_test("Bonus", False, f"Public endpoint request failed: {str(e)}")
+        log_test("Smoke Test - Create Scholarship", False, f"Exception: {str(e)}")
     
     return True
 
 
-def print_summary():
-    """Print test summary."""
+def test_credentials_with_origin():
+    """Test 5: Request with credentials (auth header + Origin)"""
+    print("\n=== Test 5: Request with credentials (auth header + Origin) ===")
+    
+    # First get admin token
+    try:
+        response = requests.post(
+            f"{BASE_URL}/admin/login",
+            json={"password": ADMIN_PASSWORD},
+            timeout=10
+        )
+        if response.status_code != 200:
+            log_test("Credentials Test - Get Token", False, f"Login failed: {response.status_code}")
+            return False
+        
+        token = response.json().get("token")
+        if not token:
+            log_test("Credentials Test - Get Token", False, "No token in response")
+            return False
+        
+        log_test("Credentials Test - Get Token", True, "Token obtained")
+        
+    except Exception as e:
+        log_test("Credentials Test - Get Token", False, f"Exception: {str(e)}")
+        return False
+    
+    # Now test GET /api/admin/bookings with Bearer token + Origin header
+    origin = "https://my-app.vercel.app"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Origin": origin
+    }
+    
+    try:
+        response = requests.get(f"{BASE_URL}/admin/bookings", headers=headers, timeout=10)
+        
+        # Check status code
+        if response.status_code != 200:
+            log_test("Credentials Test - Status Code", False, f"Expected 200, got {response.status_code}")
+            return False
+        else:
+            log_test("Credentials Test - Status Code", True, "200 OK")
+        
+        # Check CORS headers
+        resp_headers = {k.lower(): v for k, v in response.headers.items()}
+        
+        # Check allow-origin
+        allow_origin = resp_headers.get("access-control-allow-origin")
+        if allow_origin == origin or allow_origin == "*":
+            log_test("Credentials Test - Allow Origin", True, f"Header present: {allow_origin}")
+        else:
+            log_test("Credentials Test - Allow Origin", False, f"Expected {origin} or *, got {allow_origin}")
+        
+        # Check allow-credentials
+        allow_creds = resp_headers.get("access-control-allow-credentials")
+        if allow_creds == "true":
+            log_test("Credentials Test - Allow Credentials", True, "true")
+        else:
+            log_test("Credentials Test - Allow Credentials", False, f"Expected true, got {allow_creds}")
+        
+        # Check JSON body
+        try:
+            data = response.json()
+            if isinstance(data, list):
+                log_test("Credentials Test - JSON Body", True, f"Array with {len(data)} bookings")
+            else:
+                log_test("Credentials Test - JSON Body", False, f"Expected array, got {type(data)}")
+        except Exception as e:
+            log_test("Credentials Test - JSON Body", False, f"Invalid JSON: {str(e)}")
+        
+        return True
+        
+    except Exception as e:
+        log_test("Credentials Test - Request", False, f"Exception: {str(e)}")
+        return False
+
+
+def main():
+    """Run all CORS verification tests"""
+    print("=" * 70)
+    print("CORS Configuration Verification Test Suite")
+    print("Backend: https://enq-scholar-setup.preview.emergentagent.com/api")
+    print("=" * 70)
+    
+    # Run all tests
+    test_preflight_vercel()
+    test_preflight_localhost()
+    test_actual_get_with_origin()
+    test_functional_smoke()
+    test_credentials_with_origin()
+    
+    # Summary
     print("\n" + "=" * 70)
     print("TEST SUMMARY")
     print("=" * 70)
     
     passed = sum(1 for r in test_results if r["passed"])
+    failed = sum(1 for r in test_results if not r["passed"])
     total = len(test_results)
     
-    print(f"\nTotal Tests: {total}")
-    print(f"Passed: {passed}")
-    print(f"Failed: {total - passed}")
+    print(f"Total Tests: {total}")
+    print(f"Passed: {passed} ✅")
+    print(f"Failed: {failed} ❌")
     
-    if total - passed > 0:
-        print("\n❌ FAILED TESTS:")
+    if failed > 0:
+        print("\nFailed Tests:")
         for r in test_results:
             if not r["passed"]:
-                print(f"  - Step {r['step']}: {r['message']}")
+                print(f"  ❌ {r['test']}")
+                if r["details"]:
+                    print(f"     {r['details']}")
     
-    print("\n" + "=" * 70)
+    print("=" * 70)
     
-    if passed == total:
-        print("✅ ALL TESTS PASSED!")
-        return 0
-    else:
-        print("❌ SOME TESTS FAILED")
-        return 1
+    return 0 if failed == 0 else 1
 
 
 if __name__ == "__main__":
-    try:
-        test_toppers_api()
-        exit_code = print_summary()
-        sys.exit(exit_code)
-    except KeyboardInterrupt:
-        print("\n\nTests interrupted by user")
-        sys.exit(1)
-    except Exception as e:
-        print(f"\n\n❌ FATAL ERROR: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+    sys.exit(main())

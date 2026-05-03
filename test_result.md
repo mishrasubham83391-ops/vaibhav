@@ -715,3 +715,169 @@ agent_communication:
     message: "Fixed duplicate-topper bug by removing padding logic entirely. Changed Results.jsx line 116 from `items.concat(items.slice(0, visible))` to `const display = items;` so each topper renders exactly once. Carousel now slides the visible window across a single flat list with no duplicated DOM nodes. Auto-advance preserved (4s interval), transform calculation updated. Ready for re-test with 5 toppers."
   - agent: "testing"
     message: "✅ RE-TEST COMPLETE - ALL CHECKS PASSED! Comprehensive testing with 5 toppers on desktop viewport 1920x800. Results: (1) DOM count = EXACTLY 5 cards (no duplicates), (2) Each name appears EXACTLY once, (3) Newest-first sorting correct (Epsilon leftmost), (4) Auto-slide working (cycles between 0% and -25% every 4s), (5) Next/Prev buttons working, (6) Pause on hover working, (7) No critical console errors. The duplicate-topper bug is completely fixed. Feature is production-ready."
+
+
+user_problem_statement: "Verify CORS configuration changes and confirm no regression. Test preflight requests, actual requests with Origin headers, functional smoke tests, and authenticated requests with credentials."
+
+backend:
+  - task: "CORS preflight - Vercel origin"
+    implemented: true
+    working: false
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: false
+        agent: "testing"
+        comment: "❌ CRITICAL ISSUE: Preflight OPTIONS request to /api/toppers with Origin 'https://my-app.vercel.app' returns HTTP 204 but MISSING 'access-control-allow-credentials: true' header. Also returns 'access-control-allow-origin: *' instead of echoing the origin, and 'access-control-max-age: 300' instead of 600. Root cause: CORS_ORIGINS='*' in .env causes allow_origins=['*'] which prevents Starlette CORSMiddleware from setting credentials header on preflight (spec violation). Fix needed: Change to allow_origins=[] when CORS_ORIGINS='*' so regex takes over and echoes origins properly."
+
+  - task: "CORS preflight - localhost origin"
+    implemented: true
+    working: false
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: false
+        agent: "testing"
+        comment: "❌ ISSUE: Preflight OPTIONS request to /api/admin/login with Origin 'http://localhost:3000' returns HTTP 204 but returns 'access-control-allow-origin: *' instead of echoing 'http://localhost:3000'. Same root cause as Vercel preflight test."
+
+  - task: "CORS actual GET request with Origin"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASS: GET /api/toppers with Origin 'https://test-frontend.vercel.app' returns HTTP 200 with JSON array (1 topper), 'access-control-allow-origin: *', 'access-control-allow-credentials: true', and 'access-control-expose-headers: *'. All required CORS headers present on actual requests."
+
+  - task: "CORS authenticated request with credentials"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASS: GET /api/admin/bookings with Bearer token and Origin 'https://my-app.vercel.app' returns HTTP 200 with JSON array of bookings. CORS headers correct: 'access-control-allow-origin: *', 'access-control-allow-credentials: true'. Authentication works correctly with CORS."
+
+  - task: "Health endpoint"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASS: GET /api/health returns HTTP 200 with {\"status\":\"ok\"}. No regression."
+
+  - task: "Admin login endpoint"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASS: POST /api/admin/login with password 'admin123' returns HTTP 200 with JWT token (length: 125 chars). No regression."
+
+  - task: "Public toppers list endpoint"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASS: GET /api/toppers returns HTTP 200 with JSON array (1 topper). Public endpoint accessible without auth. No regression."
+
+  - task: "Create topper endpoint (admin)"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASS: POST /api/admin/toppers with Bearer token creates topper successfully. Returns HTTP 200 with topper object including UUID. No regression."
+
+  - task: "Delete topper endpoint (admin)"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASS: DELETE /api/admin/toppers/{id} with Bearer token deletes topper successfully. Returns HTTP 200 with {\"success\":true}. No regression."
+
+  - task: "Create booking endpoint"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASS: POST /api/bookings with valid booking data (student: Rajesh Kumar, program: JEE Main+Advanced, date: 2025-12-15) returns HTTP 200 with {\"success\":true,\"id\":\"<uuid>\"}. No regression."
+
+  - task: "Create scholarship endpoint"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASS: POST /api/scholarship with valid scholarship data (student: Priya Patel, program: Scholarship Test) returns HTTP 200 with {\"success\":true,\"id\":\"<uuid>\"}. No regression."
+
+  - task: "List bookings endpoint (admin)"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASS: GET /api/admin/bookings with Bearer token returns HTTP 200 with JSON array of bookings. No regression."
+
+metadata:
+  created_by: "testing_agent"
+  version: "1.5"
+  test_sequence: 7
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "CORS preflight - Vercel origin"
+    - "CORS preflight - localhost origin"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "testing"
+    message: "CORS configuration verification completed. CRITICAL ISSUE FOUND: Preflight OPTIONS requests are MISSING 'access-control-allow-credentials: true' header. Root cause: CORS_ORIGINS='*' in backend/.env causes allow_origins=['*'] in CORSMiddleware, which prevents credentials header on preflight per CORS spec. Also, origins are not being echoed (always returns '*'), and max-age is 300 instead of 600 (likely Cloudflare override). GOOD NEWS: All actual requests (GET/POST) have correct CORS headers including credentials. All functional smoke tests PASSED - no regression in API endpoints (health, login, toppers CRUD, bookings, scholarship). Fix needed: Change server.py line 505 to use allow_origins=[] when CORS_ORIGINS='*' so regex patterns take over and echo origins properly. Detailed findings in /app/cors_test_findings.md."

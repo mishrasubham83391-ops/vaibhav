@@ -486,16 +486,45 @@ app.include_router(api_router)
 
 # ------------------------------------------------------------------
 # CORS
+#
+# Two-layer policy that is safe for both local dev and production:
+#   1. `allow_origins`        — comes from the CORS_ORIGINS env var
+#                                (comma-separated list, or "*" wildcard).
+#   2. `allow_origin_regex`  — always-on safety net that lets the
+#                                Vercel preview/prod domains, Render
+#                                domains, the Emergent preview host
+#                                and localhost reach the API even if
+#                                someone misconfigures CORS_ORIGINS.
+#
+# `allow_credentials=True` is enabled in all cases. Starlette's
+# CORSMiddleware will echo the actual request Origin header (instead of
+# the literal "*") when both wildcard and credentials are allowed, so
+# this is spec-compliant and does not break browser auth flows.
 # ------------------------------------------------------------------
 _cors = os.getenv("CORS_ORIGINS", "*").strip()
 allowed_origins = ["*"] if _cors == "*" else [o.strip() for o in _cors.split(",") if o.strip()]
 
+# Regex fallback for production deployments. Matches:
+#   • http(s)://localhost or 127.0.0.1 (any port) — local dev
+#   • https://*.vercel.app — Vercel previews + production
+#   • https://*.onrender.com — Render frontends (if any)
+#   • https://*.emergentagent.com — Emergent preview hosts
+_cors_regex = (
+    r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+    r"|^https://([a-z0-9-]+\.)*vercel\.app$"
+    r"|^https://([a-z0-9-]+\.)*onrender\.com$"
+    r"|^https://([a-z0-9-]+\.)*emergentagent\.com$"
+)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_credentials=False if allowed_origins == ["*"] else True,
+    allow_origin_regex=_cors_regex,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=600,
 )
 
 
